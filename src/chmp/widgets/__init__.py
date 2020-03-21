@@ -350,7 +350,7 @@ class JSObj:
             self, obj = args
 
         else:
-            self, = args
+            (self,) = args
             obj = {}
 
         assert isinstance(obj, dict)

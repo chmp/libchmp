@@ -182,7 +182,7 @@ class Object:
             seed = {}
 
         else:
-            seed, = args
+            (seed,) = args
             if not isinstance(seed, collections.Mapping):
                 seed = vars(seed)
 
@@ -293,6 +293,14 @@ def last(iterable, default=undefined):
         pass
 
     return item
+
+
+def nth(iterable, n, default=undefined):
+    for i, item in enumerate(iterable):
+        if i == n:
+            return item
+
+    return default
 
 
 def item(iterable, default=undefined):
@@ -1031,7 +1039,7 @@ def _prepare_xy(x, y, data=None, transform_x=None, transform_y=None, skip_nan=Tr
 def _find_changes(v):
     import numpy as np
 
-    changes, = np.nonzero(np.diff(v))
+    (changes,) = np.nonzero(np.diff(v))
     changes = changes + 1
     return changes
 
@@ -1514,6 +1522,18 @@ class Display:
             plt.close()
 
             self.handle.update(Image(fobj.getvalue(), format="png"))
+
+
+class MovingAverage:
+    def __init__(self, alpha):
+        self.alpha = alpha
+        self.value = None
+
+    def update(self, value):
+        if self.value is None:
+            self.value = value
+
+        self.value = alpha * self.value + (1 - alpha) * value
 
 
 def pd_has_ordered_assign():
@@ -2323,6 +2343,19 @@ def read_markdown_list(
         ]
     )
     return pd.DataFrame(result)
+
+
+# ########################################################################## #
+#                               TQDM Helpers                                 #
+# ########################################################################## #
+
+
+def clear_tqdm():
+    """Close any open TQDM instances to prevent display errors"""
+    import tqdm
+
+    for inst in list(tqdm.tqdm._instances):
+        inst.close()
 
 
 # ########################################################################## #

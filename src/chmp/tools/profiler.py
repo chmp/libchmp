@@ -83,7 +83,7 @@ def build_data(stats, cmap="autumn", skip_empty=True):
 
     if skip_empty:
         while len(tree.children) == 1:
-            tree, = tree.children.values()
+            (tree,) = tree.children.values()
 
     cmap = cm.get_cmap(cmap)
 

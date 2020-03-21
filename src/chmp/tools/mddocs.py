@@ -485,7 +485,7 @@ class MarkdownWriter(Writer):
                     type, name = parts
 
                 elif len(parts) == 1:
-                    name, = parts
+                    (name,) = parts
                     type = "any"
 
                 else:

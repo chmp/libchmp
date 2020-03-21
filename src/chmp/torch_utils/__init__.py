@@ -384,7 +384,7 @@ class _LookupFunction(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_output):
-        backward_values, = ctx.saved_tensors
+        (backward_values,) = ctx.saved_tensors
         return grad_output * backward_values, None, None, None, None
 
 
@@ -443,7 +443,7 @@ class NumpyDataset(torch.utils.data.Dataset):
         if len(candidates) != 1:
             raise ValueError(f"Arrays with different lengths: {candidates}")
 
-        length, = candidates
+        (length,) = candidates
         return length
 
     def __len__(self):

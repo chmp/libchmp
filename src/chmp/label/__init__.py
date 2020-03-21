@@ -146,7 +146,7 @@ def has_label(fname):
 
 def write_label(*args, keep_existing=True, **kwargs):
     if len(args) == 1:
-        fname, = args
+        (fname,) = args
         d = {}
 
     elif len(args) == 2:

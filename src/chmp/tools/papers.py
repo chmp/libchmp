@@ -80,7 +80,7 @@ def sort_non_arxiv_papers(source_path, target_path):
 def shasum(p):
     p = subprocess.run(["shasum", p], stdout=subprocess.PIPE, check=True)
     s = p.stdout.decode()
-    s, = s.splitlines()
+    (s,) = s.splitlines()
     s, *_ = s.partition(" ")
     return s
 

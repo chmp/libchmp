@@ -28,7 +28,7 @@ def restore(engine, map_location=None, optional=True):
     elif len(checkpointers) > 1:
         raise RuntimeError("Cannot handle multiple SimpleCheckpointer instances")
 
-    checkpointer, = checkpointers
+    (checkpointer,) = checkpointers
     checkpointer.restore(map_location=map_location, optional=optional)
 
 
