@@ -4,14 +4,18 @@ mpl.use("Agg")
 
 import matplotlib.pyplot as plt
 
-from chmp.ds import mpl_set
+from chmp.ds import mpl_axis
 
 
 def test_mpl_set_xscale():
-    mpl_set(xscale="log")
-    assert plt.gca().get_xscale() == "log"
+    with mpl_axis(xscale="log") as ax:
+        pass
+
+    assert ax.get_xscale() == "log"
 
 
 def test_mpl_set_yscale():
-    mpl_set(yscale="log")
-    assert plt.gca().get_yscale() == "log"
+    with mpl_axis(yscale="log") as ax:
+        pass
+
+    assert ax.get_yscale() == "log"

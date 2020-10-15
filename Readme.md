@@ -1,7 +1,5 @@
 # chmp - Support code for machine learning / data science experiments
 
-- [`chmp.distributed`](docs/distributed.md): distributed execution of
-  functional pipelines
 - [`chmp.ds`](docs/ds.md): data science support
 - [`chmp.experiment`](docs/experiment.md): support code to organize and analyse
   machine learning experiments

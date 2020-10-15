@@ -6,7 +6,6 @@ import pytest
 from chmp.ds import (
     Object,
     timed,
-    singledispatch_on,
     piecewise_linear,
     piecewise_logarithmic,
     szip,
@@ -33,21 +32,6 @@ def test_timed():
 
     with timed("label"):
         assert True is True
-
-
-def test_singledispatch_on():
-    @singledispatch_on(1)
-    def foo(a, b):
-        return 1
-
-    @foo.register(int)
-    def bar(a, b):
-        return 2
-
-    assert foo(0, 2) == 2
-    assert foo(1, None) == 1
-    assert foo(None, 2) == 2
-    assert foo(None, None) == 1
 
 
 def test_piecewise_linear():

@@ -7,6 +7,7 @@ import base64
 import bisect
 import bz2
 import collections
+import contextlib
 import datetime
 import enum
 import functools as ft
@@ -330,11 +331,6 @@ def collect(iterable):
     return result
 
 
-class kvpair(NamedTuple):
-    key: Any
-    value: Any
-
-
 class cell:
     """No-op context manager to allow indentation of code"""
 
@@ -406,7 +402,89 @@ def get_color_cycle(n=None):
     return list(it.islice(it.cycle(cycle), n))
 
 
-def mpl_set(
+@contextlib.contextmanager
+def mpl_figure(
+    n_rows=None, 
+    n_cols=None, 
+    n_axis=None,
+    wspace=1.0, 
+    hspace=1.5,
+    axis_height=2.5,
+    axis_width=3.5,
+    left_margin=0.5, 
+    right_margin=0.1, 
+    top_margin=0.1, 
+    bottom_margin=0.5,
+    title=None
+):
+    import matplotlib.pyplot as plt
+
+    n_rows, n_cols, n_axis = _normalize_figure_args(n_rows, n_cols, n_axis)
+    
+    width = left_margin + right_margin + (n_cols - 1) * wspace + n_cols * axis_width
+    height = bottom_margin + top_margin + (n_rows - 1) * hspace + n_rows * axis_height
+    
+    gridspec_kw=dict(
+        bottom=bottom_margin / height,
+        top=1.0 - top_margin / height,
+        left=left_margin / width,
+        right=1.0 - right_margin / width,
+        wspace=wspace / axis_width,
+        hspace=hspace / axis_height,
+    )
+    
+    _, axes = plt.subplots(n_rows, n_cols, figsize=(width, height), gridspec_kw=gridspec_kw)
+    
+    if title is not None:
+        plt.suptitle(title)
+    
+    yield axes.flatten()[:n_axis]
+
+
+def _normalize_figure_args(n_rows, n_cols, n_axis):
+    has_rows = n_rows is not None
+    has_cols = n_cols is not None
+    has_axis = n_axis is not None
+    
+    if has_rows and has_cols and has_axis:
+        pass
+    
+    elif has_rows and has_cols and not has_axis:
+        n_axis = n_rows * n_cols
+        
+    elif has_rows and not has_cols and has_axis:
+        n_cols = n_axis // n_rows + ((n_axis % n_rows) != 0)
+    
+    elif not has_rows and has_cols and has_axis:
+        n_rows = n_axis // n_cols + ((n_axis % n_cols) != 0)
+    
+    elif not has_rows and not has_cols and has_axis:
+        n_cols = 1
+        n_rows = n_axis // n_cols + ((n_axis % n_cols) != 0)
+    
+    elif not has_rows and has_cols and not has_axis:
+        n_rows = 1
+        n_axis = n_rows * n_cols
+    
+    elif has_rows and not has_cols and not has_axis:
+        n_cols = 1
+        n_axis = n_rows * n_cols
+        
+    elif not has_rows and not has_cols and not has_axis:
+        n_rows = 1
+        n_cols = 1
+        n_axis = 1
+    
+    
+    assert n_axis <= n_rows * n_cols
+    
+    return n_rows, n_cols, n_axis
+
+
+@contextlib.contextmanager
+def mpl_axis(
+    ax=None,
+    *,
     box=None,
     xlabel=None,
     ylabel=None,
@@ -431,7 +509,6 @@ def mpl_set(
     legend=None,
     colorbar=None,
     invert: Optional[str] = None,
-    ax=None,
     grid=None,
     axis=None,
 ):
@@ -449,8 +526,13 @@ def mpl_set(
     """
     import matplotlib.pyplot as plt
 
-    if ax is not None:
-        plt.sca(ax)
+    prev_ax = plt.gca() if plt.get_fignums() else None
+
+    if ax is None:
+        _, ax = plt.subplots()
+
+    plt.sca(ax)
+    yield ax
 
     if box is not None:
         plt.box(box)
@@ -488,12 +570,18 @@ def mpl_set(
         if isinstance(xticks, tuple):
             plt.xticks(*xticks)
 
+        elif isinstance(xticks, dict):
+            plt.xticks(**xticks)
+
         else:
             plt.xticks(xticks)
 
     if yticks is not None:
         if isinstance(yticks, tuple):
             plt.yticks(*yticks)
+
+        elif isinstance(yticks, dict):
+            plt.yticks(**yticks)
 
         else:
             plt.yticks(yticks)
@@ -565,51 +653,9 @@ def mpl_set(
 
         plt.axis(axis)
 
-
-class mpl_axis:
-    def __init__(self, ax=None, **kwargs):
-        self.ax = ax
-        self._prev_ax = None
-        self.kwargs = kwargs
-
-    def __enter__(self):
-        import matplotlib.pyplot as plt
-
-        if plt.get_fignums():
-            self._prev_ax = plt.gca()
-
-        if self.ax is None:
-            _, self.ax = plt.subplots()
-
-        plt.sca(self.ax)
-        return self.ax
-
-    def __exit__(self, exc_type, exc_value, exc_tb):
-        import matplotlib.pyplot as plt
-
-        mpl_set(**self.kwargs)
-
-        if self._prev_ax is not None:
-            plt.sca(self._prev_ax)
-
-
-# fake the mpl_axis signature ...
-# TODO: make this a general utility function?
-@define
-def _():
-    import collections
-    import inspect
-
-    wrapper_signature = inspect.signature(mpl_axis)
-    base_signature = inspect.signature(mpl_set)
-
-    parameters = collections.OrderedDict()
-    parameters["ax"] = wrapper_signature.parameters["ax"].replace(
-        kind=inspect.Parameter.POSITIONAL_ONLY
-    )
-    parameters.update(base_signature.parameters)
-
-    mpl_axis.__signature__ = wrapper_signature.replace(parameters=parameters.values())
+    # restore the previous axis
+    if prev_ax is not None:
+            plt.sca(prev_ax)
 
 
 def diagonal(**kwargs):
@@ -644,223 +690,6 @@ def qlineplot(*, x, y, hue, data, ci=0.95):
     plt.legend(loc="best")
     plt.xlabel(x)
     plt.ylabel(y)
-
-
-class pgm:
-    """Wrapper around :class:`daft.PGM` to allow fluid call chains.
-
-    Usage::
-
-        (
-            pgm(observed_style="inner", ax=ax1)
-            .node("z", r"$Z$", 1.5, 2)
-            .node("x", r"$X$", 1, 1)
-            .node("y", r"$Y$", 2, 1)
-            .edge("z", "x")
-            .edge("x", "y")
-            .edge("z", "y")
-            .render(xlim=(1, 5), ylim=(1, 5))
-        )
-
-    To annotate a node use::
-
-        .annotate(node_name, annotation_text)
-
-    Nodes can also be created without explicit lables (in which case the node
-    name is used)::
-
-        .node("z", 1, 1)
-        node("z", "label", 1, 1)
-
-    """
-
-    def __init__(self, *, ax=None, nodes=(), edges=(), annotations=(), **kwargs):
-        if not _HAS_DAFT:
-            raise RuntimeError("daft is required for pgm support.")
-
-        self.ax = ax
-        self.daft_kwargs = kwargs
-
-        self._nodes = list(nodes)
-        self._edges = list(edges)
-        self._annotations = list(annotations)
-
-    def update(self, nodes=None, edges=None, annotations=None):
-        """Replace a full set of features."""
-        if nodes is None:
-            nodes = self._nodes
-
-        if edges is None:
-            edges = self._edges
-
-        if annotations is None:
-            annotations = self._annotations
-
-        return type(self)(
-            nodes=nodes,
-            edges=edges,
-            annotations=annotations,
-            ax=self.ax,
-            **self.daft_kwargs,
-        )
-
-    def node(self, *args, edgecolor=None, facecolor=None, **kwargs):
-        if edgecolor is not None:
-            kwargs.setdefault("plot_params", {}).update(edgecolor=edgecolor)
-
-        if facecolor is not None:
-            kwargs.setdefault("plot_params", {}).update(facecolor=facecolor)
-
-        node = Object(kwargs=kwargs)
-        if len(args) == 3:
-            node.name, node.x, node.y = args
-            node.label = node.name
-
-        else:
-            node.name, node.label, node.x, node.y = args
-
-        return self.update(nodes=self._nodes + [node])
-
-    def edge(self, from_node, to_node, **kwargs):
-        edge = Object(from_node=from_node, to_node=to_node, kwargs=kwargs)
-        return self.update(edges=self._edges + [edge])
-
-    def edges(self, from_nodes, to_nodes, **kwargs):
-        current = self
-        for from_node, to_node in it.product(from_nodes, to_nodes):
-            current = current.edge(from_node, to_node, **kwargs)
-        return current
-
-    def remove(self, incoming=(), outgoing=()):
-        """Remove edges that point in or out of a the specified nodes.
-        """
-        incoming = set(incoming)
-        outgoing = set(outgoing)
-        edges_to_keep = [
-            edge
-            for edge in self._edges
-            if (edge.from_node not in outgoing and edge.to_node not in incoming)
-        ]
-
-        return self.update(edges=edges_to_keep)
-
-    def annotate(self, node, text):
-        annotation = Object(node=node, text=text)
-        return self.update(annotations=self._annotations + [annotation])
-
-    def render(self, ax=None, axis=False, xlim=None, ylim=None, **kwargs):
-        """Render the figure.
-
-        :param ax:
-            the axes to draw into. If not given, the axis specified in
-            `__init__` or the current axes is used.
-        :param xlim:
-            the xlim to use. If not given, it is determined from the data.
-        :param ylim:
-            the ylim to use. If not given, it is determined from the data.
-        :param kwargs:
-            keyword arguments forward to mpl set.
-
-        :returns:
-            the `pgm` object.
-        """
-        import daft
-        import matplotlib.pyplot as plt
-
-        if ax is None:
-            if self.ax is not None:
-                ax = self.ax
-
-            else:
-                ax = plt.gca()
-
-        pgm = _PGM(ax=ax)
-
-        for node in self._nodes:
-            daft_node = daft.Node(node.name, node.label, node.x, node.y, **node.kwargs)
-            pgm.add_node(daft_node)
-
-        for edge in self._edges:
-            pgm.add_edge(edge.from_node, edge.to_node, **edge.kwargs)
-
-        for annot in self._annotations:
-            self._render_annotation(pgm, annot)
-
-        if xlim is None or ylim is None:
-            data_xlim, data_ylim = pgm.get_limits()
-            if xlim is None:
-                xlim = expand(*data_xlim, 0.10)
-
-            if ylim is None:
-                ylim = expand(*data_ylim, 0.10)
-
-        pgm.render()
-        mpl_set(**kwargs, axis=axis, xlim=xlim, ylim=ylim, ax=ax)
-
-        return pgm
-
-    def _render_annotation(self, pgm, annot):
-        extent = pgm.get_node_extent(annot.node)
-        pgm._ctx._ax.text(
-            extent.x, extent.y - 0.5 * extent.height, annot.text, va="top", ha="center"
-        )
-
-    def _ipython_display_(self):
-        self.render()
-
-
-class _PGM(PGM):
-    def __init__(self, *, ax=None, **kwargs):
-        super().__init__([1.0, 1.0], origin=[0.0, 0.0], **kwargs)
-        self._ctx._ax = ax
-        self._ctx._figure = ax.get_figure()
-
-    def get_node_extent(self, node):
-        # TODO: incorporate the complete logic of daft?
-        ctx = self._ctx
-
-        if isinstance(node, str):
-            node = self._nodes[node]
-
-        aspect = node.aspect if node.aspect is not None else ctx.aspect
-        height = node.scale * ctx.node_unit
-        width = aspect * height
-
-        center_x = ctx.grid_unit * node.x
-        center_y = ctx.grid_unit * node.y
-
-        return Object(
-            x=center_x,
-            y=center_y,
-            width=width,
-            height=height,
-            xmin=center_x - 0.5 * width,
-            xmax=center_x + 0.5 * width,
-            ymin=center_y - 0.5 * height,
-            ymax=center_y + 0.5 * height,
-        )
-
-    def get_limits(self):
-        nodes = list(self._nodes.values())
-
-        if not nodes:
-            return (0, 1), (0, 1)
-
-        extent = self.get_node_extent(nodes[0])
-
-        xmin = extent.xmin
-        xmax = extent.xmax
-        ymin = extent.ymin
-        ymax = extent.ymax
-
-        for node in nodes[1:]:
-            extent = self.get_node_extent(node)
-            xmin = min(xmin, extent.xmin)
-            xmax = max(xmax, extent.xmax)
-            ymin = min(ymin, extent.ymin)
-            ymax = max(ymax, extent.ymax)
-
-        return (xmin, xmax), (ymin, ymax)
 
 
 def edges(x):
@@ -902,64 +731,6 @@ def caption(s, size=13, strip=True):
 _caption = caption
 
 
-def change_vspan(
-    x,
-    y,
-    *,
-    data=None,
-    color=("w", "0.90"),
-    transform_x=None,
-    transform_y=None,
-    skip_nan=True,
-    **kwargs,
-):
-    """Plot changes in a quantity with vspans.
-    """
-    import matplotlib.pyplot as plt
-    import numpy as np
-
-    x, y = _prepare_xy(
-        x,
-        y,
-        data=data,
-        transform_x=transform_x,
-        transform_y=transform_y,
-        skip_nan=skip_nan,
-    )
-
-    if not isinstance(color, (tuple, list)):
-        color = [color]
-
-    changes = _find_changes(y)
-    changes = np.concatenate([[0], changes, [len(y) - 1]])
-
-    for start, end, c in zip(changes[:-1], changes[1:], it.cycle(color)):
-        plt.axvspan(x[start], x[end], color=c, **kwargs)
-
-
-def change_plot(
-    x, y, *, data=None, transform_x=None, transform_y=None, skip_nan=True, **kwargs
-):
-    """Plot changes in a quantity with pyplot's standard plot function.
-    """
-    import matplotlib.pyplot as plt
-
-    x, y = _prepare_xy(
-        x,
-        y,
-        data=data,
-        transform_x=transform_x,
-        transform_y=transform_y,
-        skip_nan=skip_nan,
-    )
-    changes = _find_changes(y)
-
-    x = x[changes]
-    y = y[changes]
-
-    plt.plot(x, y, **kwargs)
-
-
 def axtext(*args, **kwargs):
     """Add a text in axes coordinates (similar ``figtext``).
 
@@ -972,52 +743,6 @@ def axtext(*args, **kwargs):
 
     kwargs.update(transform=plt.gca().transAxes)
     plt.text(*args, **kwargs)
-
-
-def plot_gaussian_contour(x, y, *, data=None, q=(0.99,), ax=None, **kwargs):
-    """Plot isocontours of the maximum likelihood Gaussian for ``x, y``.
-
-    :param q:
-        the quantiles to show.
-    """
-    import numpy as np
-    import matplotlib as mpl
-    import matplotlib.pyplot as plt
-    import scipy.special
-
-    if ax is not None:
-        plt.sca(ax)
-
-    kwargs.setdefault("facecolor", "none")
-    kwargs.setdefault("edgecolor", "k")
-
-    q = np.atleast_1d(q)
-
-    if data is not None:
-        x = data[x]
-        y = data[y]
-
-    x = np.asarray(x)
-    y = np.asarray(y)
-
-    mx = np.mean(x)
-    my = np.mean(y)
-    xx = np.mean((x - mx) * (x - mx))
-    yy = np.mean((y - my) * (y - my))
-    xy = np.mean((x - mx) * (y - my))
-
-    cov = np.asarray([[xx, xy], [xy, yy]])
-    eigvals, eigvects = np.linalg.eig(cov)
-
-    dx, dy = eigvects[:, 0]
-    angle = math.atan2(dy, dx) / (2 * math.pi) * 360
-
-    for _q in q:
-        s = (2 ** 0.5) * scipy.special.erfinv(_q)
-        artist = mpl.patches.Ellipse((mx, my), *(s * eigvals), angle, **kwargs)
-        plt.gca().add_artist(artist)
-
-    return artist
 
 
 def _prepare_xy(x, y, data=None, transform_x=None, transform_y=None, skip_nan=True):
@@ -1056,21 +781,6 @@ def _optional_skip_nan(x, y, skip_nan=True):
 
 def _dict_of_optionals(**kwargs):
     return {k: v for k, v in kwargs.items() if v is not None}
-
-
-@ft.singledispatch
-def get_children(est):
-    return []
-
-
-def to_markdown(df, index=False):
-    """Return a string containg the markdown of the table.
-
-    Depends on the ``tabulate`` dependency.
-    """
-    from tabulate import tabulate
-
-    return tabulate(df, tablefmt="pipe", headers="keys", showindex=index)
 
 
 def index_query(obj, expression, scalar=False):
@@ -1206,40 +916,6 @@ def as_frame(**kwargs):
     import pandas as pd
 
     return pd.DataFrame().assign(**kwargs)
-
-
-def singledispatch_on(idx):
-    """Helper to dispatch on any argument, not only the first one."""
-
-    # It works by wrapping the function to include the relevant
-    # argument as first argument as well.
-    def decorator(func):
-        @ft.wraps(func)
-        def wrapper(*args, **kwargs):
-            dispatch_obj = args[idx]
-            return dispatcher(dispatch_obj, *args, **kwargs)
-
-        def make_call_impl(func):
-            @ft.wraps(func)
-            def impl(*args, **kwargs):
-                _, *args = args
-                return func(*args, **kwargs)
-
-            return impl
-
-        def register(type):
-            def decorator(func):
-                dispatcher.register(type)(make_call_impl(func))
-                return func
-
-            return decorator
-
-        wrapper.register = register
-        dispatcher = ft.singledispatch(make_call_impl(func))
-
-        return wrapper
-
-    return decorator
 
 
 def setdefaultattr(obj, name, value):
@@ -1421,121 +1097,6 @@ def _piecewise(interpolator, x, y, xi):
     return interpolator(u, y[interval - 1], y[interval])
 
 
-bg_instances = {}
-
-
-def bgloop(tag, *iterables, runner=None):
-    """Run a loop in a background thread."""
-    if runner is None:
-        runner = run_thread
-
-    def decorator(func):
-        if tag in bg_instances and bg_instances[tag].running:
-            raise RuntimeError("Already running loop")
-
-        bg_instances[tag] = Object()
-        bg_instances[tag].running = True
-        bg_instances[tag].handle = runner(_run_loop, tag, func, iterables)
-
-        return func
-
-    def _run_loop(tag, func, iterables):
-        try:
-            bg_instances[tag].running = True
-            for loop, item in Loop.over(
-                fast_product(*iterables), length=product_len(*iterables)
-            ):
-                if not bg_instances[tag].running:
-                    break
-
-                func(loop, *item)
-
-        finally:
-            bg_instances[tag].running = False
-
-    return decorator
-
-
-def cancel(tag):
-    if tag in bg_instances:
-        bg_instances[tag].running = False
-
-
-def wait(tag):
-    if tag in bg_instances and bg_instances[tag].handle is not None:
-        bg_instances[tag].handle.join()
-
-
-def run_direct(*args, **kwargs):
-    func, *args = args
-    func(*args, **kwargs)
-
-
-def run_thread(*args, **kwargs):
-    func, *args = args
-    t = threading.Thread(target=func, args=args, kwargs=kwargs)
-    t.start()
-    return t
-
-
-def product_len(*iterables):
-    if not iterables:
-        return 1
-
-    head, *tail = iterables
-    return len(head) * product_len(*tail)
-
-
-def fast_product(*iterables):
-    if not iterables:
-        yield ()
-        return
-
-    head, *tail = iterables
-    for i in head:
-        for j in fast_product(*tail):
-            yield (i,) + j
-
-
-class Display:
-    """An interactive display for use in background tasks."""
-
-    def __init__(self, obj=None):
-        from IPython.core.display import display
-
-        self.handle = display(obj, display_id=True)
-
-    def update(self, obj):
-        self.handle.update(obj)
-
-    def print(self, *args, sep=" "):
-        from IPython.core.display import Pretty
-
-        self.handle.update(Pretty(sep.join(str(a) for a in args)))
-
-    def figure(self):
-        from IPython.core.display import Image
-        import matplotlib.pyplot as plt
-
-        with io.BytesIO() as fobj:
-            plt.savefig(fobj, format="png")
-            plt.close()
-
-            self.handle.update(Image(fobj.getvalue(), format="png"))
-
-
-class MovingAverage:
-    def __init__(self, alpha):
-        self.alpha = alpha
-        self.value = None
-
-    def update(self, value):
-        if self.value is None:
-            self.value = value
-
-        self.value = alpha * self.value + (1 - alpha) * value
-
-
 def pd_has_ordered_assign():
     import pandas as pd
 
@@ -1672,53 +1233,7 @@ class FilterLowFrequencyTransfomer(BaseEstimator, TransformerMixin):
         return var[col] if isinstance(var, dict) else var
 
 
-def column_transform(*args, **kwargs):
-    """Build a transformer for a list of columns.
-
-    Usage::
-
-        pipeline = build_pipeline(
-            transform=column_transform(['a', 'b'], np.abs),
-            classifier=sk_ensemble.GradientBoostingClassifier(),
-        ])
-
-    Or::
-
-        pipeline = build_pipeline(
-            transform=column_transform(
-                a=np.abs,
-                b=op.pos,
-            ),
-            classifier=sk_ensemble.GradientBoostingClassifier(),
-        )
-
-    """
-    if not args:
-        columns = kwargs
-
-    else:
-        columns, func, *args = args
-
-        if not isinstance(columns, (list, tuple)):
-            columns = [columns]
-
-        func = ft.partial(func, *args, **kwargs)
-        columns = {c: func for c in columns}
-
-    return transform(_column_transform, columns=columns)
-
-
-def _column_transform(x, columns):
-    if not hasattr(x, "assign"):
-        raise RuntimeError("can only transform objects with an assign method.")
-
-    for c, func in columns.items():
-        x = x.assign(**{c: func(x[c])})
-
-    return x
-
-
-def build_pipeline(**kwargs):
+def make_pipeline(**kwargs):
     """Build a pipeline from named steps.
 
     The order of the keyword arguments is retained. Note, this functionality
@@ -1726,7 +1241,7 @@ def build_pipeline(**kwargs):
 
     Usage::
 
-        pipeline = build_pipeline(
+        pipeline = make_pipeline(
             transform=...,
             predict=...,
         )
@@ -1738,97 +1253,6 @@ def build_pipeline(**kwargs):
         raise RuntimeError("pipeline factory requires deterministic kwarg order")
 
     return sk_pipeline.Pipeline(list(kwargs.items()))
-
-
-def transform(*args, **kwargs):
-    """Build a function transformer with args / kwargs bound.
-
-    Usage::
-
-        pipeline = build_pipeline(
-            transform=transform(np.abs)),
-            classifier=sk_ensemble.GradientBoostingClassifier()),
-        )
-    """
-    func, *args = args
-    return FuncTransformer(ft.partial(func, *args, **kwargs))
-
-
-class FuncTransformer(TransformerMixin, BaseEstimator):
-    """Simple **non-validating** function transformer.
-
-    :param callable func:
-        the function to apply on transform
-    """
-
-    def __init__(self, func):
-        self.func = func
-
-    def fit(self, x, y=None):
-        return self
-
-    def partial_fit(self, x, y=None):
-        return self
-
-    def transform(self, x):
-        return self.func(x)
-
-
-class FuncClassifier(BaseEstimator, ClassifierMixin):
-    def __init__(self, func):
-        self.func = func
-
-    def fit(self, df, y=None):
-        return self
-
-    def predict_proba(self, df):
-        return self.func(df)
-
-    def predict(self, df):
-        import numpy as np
-
-        return np.argmax(self.predict_proba(df), axis=1)
-
-
-class FuncRegressor(BaseEstimator, RegressorMixin):
-    def __init__(self, func):
-        self.func = func
-
-    def fit(self, df, y=None):
-        return self
-
-    def predict(self, df):
-        return self.func(df)
-
-
-class DataFrameEstimator(BaseEstimator):
-    """Add support for dataframe use to sklearn estimators.
-    """
-
-    def __init__(self, est):
-        self.est = est
-
-    def fit(self, x, y=None, **kwargs):
-        import numpy as np
-
-        x = x.reset_index(drop=True)
-        y = np.asarray(x[y])
-
-        self.est.fit(x, y, **kwargs)
-        return self
-
-    def predict(self, x, y=None):
-        x = x.reset_index(drop=True)
-        return self.est.predict(x)
-
-    def predict_proba(self, x, y=None):
-        x = x.reset_index(drop=True)
-        return self.est.predict_proba(x)
-
-
-@get_children.register(DataFrameEstimator)
-def df_estimator(est):
-    return [(0, est.est)]
 
 
 class OneHotEncoder(BaseEstimator, TransformerMixin):
@@ -1863,60 +1287,6 @@ class OneHotEncoder(BaseEstimator, TransformerMixin):
                 raise RuntimeError(f"cannot transform {col}") from e
 
         return x
-
-
-def multi_type_sorted(vals):
-    import pandas as pd
-
-    return sorted(
-        vals, key=lambda v: (type(v).__module__, type(v).__name__, pd.isnull(v), v)
-    )
-
-
-class FitInfo(BaseEstimator, TransformerMixin):
-    """Extract and store meta data of the dataframe passed to fit.
-    """
-
-    def __init__(self, extractor, target=None):
-        self.extractor = extractor
-        self.target = target
-
-        if target is None:
-            self.meta_ = {}
-
-        else:
-            self.meta_ = target
-
-    def fit(self, x, y=None):
-        self.meta_.update(self.extractor(x))
-        return self
-
-    def transform(self, x, y=None):
-        return x
-
-
-try:
-    import sklearn.pipeline as sk_pipeline
-
-    @get_children.register(sk_pipeline.Pipeline)
-    def pipeline_get_children(est):
-        return est.steps
-
-
-except ImportError:
-    pass
-
-
-def search_estimator(predicate, est, key=()):
-    return list(_search_estimator(predicate, key, est))
-
-
-def _search_estimator(predicate, key, est):
-    if predicate(key, est):
-        yield key, est
-
-    for child_key, child in get_children(est):
-        yield from _search_estimator(predicate, key + (child_key,), child)
 
 
 def waterfall(
@@ -2131,102 +1501,6 @@ def qplot(
         plt.plot(x, y[n], alpha=alpha, color=color, **line_kwargs)
 
 
-def render_poyo(obj, params):
-    """Lighweight POYO templating.
-
-    Any callable in the tree will be called with params. Example::
-
-        template = {
-            "key": lambda params: params['value'],
-        }
-
-        render_poyo(template, {'value': 20})
-
-    """
-    return sapply(lambda o: o if not callable(o) else o(params), obj)
-
-
-def dashcb(app, output, *inputs, figure=False):
-    """Construct a dash callback using function annotations.
-
-    :param dash.Dash app:
-        the dash app to build the callback for
-
-    :param str output:
-        the output, as a string of the form ``{component}:{property}``
-
-    :param str inputs:
-        the inputs, as strings of the form ``{component}:{property}``
-
-    :param bool figure:
-        if True, the current matplotlib figure will be captured and returned as
-        a data URL. This allows to use matplotlib with dash. See the examples
-        below
-
-    Consider the following dash callback::
-
-
-        @app.callback(dash.dependencies.Output('display', 'children'),
-                      [dash.dependencies.Input('dropdown', 'value')])
-        def update_display(value):
-            return 'Selected: "{}"'.format(value)
-
-    With dashcb, it can be written as::
-
-        @dashcb(app, 'display:children', 'dropdown:value')
-        def update_display(value):
-            return 'Selected: "{}"'.format(value)
-
-    To use dash with matplotlib figure, define an ``html.Img`` element. For
-    example with id ``my_image``. Then the plot can be updated via::
-
-        @dashcb(app, 'my_image:src', 'dropdown:value', figure=True)
-        def update_display(value):
-            plt.plot([1, 2, 3])
-            plt.title(value)
-
-    """
-    import dash.dependencies
-
-    def decorator(func):
-        dash_inputs = [
-            _dash_cb_parse_annotation(dash.dependencies.Input, arg) for arg in inputs
-        ]
-        dash_output = _dash_cb_parse_annotation(dash.dependencies.Output, output)
-
-        if figure:
-            return app.callback(dash_output, dash_inputs)(dashmpl(func))
-
-        return app.callback(dash_output, dash_inputs)(func)
-
-    return decorator
-
-
-def dashmpl(func):
-    """Capture the current matplotlib figure.
-    """
-    import matplotlib.pyplot as plt
-
-    @ft.wraps(func)
-    def impl(*args, **kwargs):
-        func(*args, **kwargs)
-
-        img = io.BytesIO()
-        plt.savefig(img, format="png")
-        plt.close()
-
-        img = base64.b64encode(img.getvalue())
-        img = img.decode("ascii")
-        return "data:image/png;base64," + img
-
-    return impl
-
-
-def _dash_cb_parse_annotation(cls, s):
-    element, _, property = s.partition(":")
-    return cls(element, property)
-
-
 def expand(low, high, change=0.05):
     center = 0.5 * (low + high)
     delta = 0.5 * (high - low)
@@ -2265,86 +1539,6 @@ def _get_opener(p, compression):
     return openers[compression]
 
 
-def write_json(
-    obj, p, *, compression=None, atomic=False, lines=False, json=json, **kwargs
-):
-    with magic_open(p, "wt", compression=compression, atomic=atomic) as fobj:
-        if not lines:
-            json.dump(obj, fobj, **kwargs)
-
-        else:
-            for item in obj:
-                fobj.write(json.dumps(item))
-                fobj.write("\n")
-
-
-def read_json(p, *, lines=False, compression=None, json=json):
-    with magic_open(p, "rt", compression=compression) as fobj:
-        if not lines:
-            return json.load(fobj)
-
-        else:
-            return [json.loads(l) for l in fobj]
-
-
-# ######################################################################################## #
-#                                     Pandas IO methods                                    #
-# ######################################################################################## #
-
-# TODO: allow to read-in all sections
-# TODO: allow to autodetect the columns
-def read_markdown_list(
-    fobj_or_path, *, section, columns, dtype=None, parse_dates=None, compression=None
-):
-    """Read a markdown file as a DataFrame."""
-    import pandas as pd
-
-    parse_dates = set(parse_dates if parse_dates is not None else ())
-    dtype = dict(dtype if dtype is not None else {})
-
-    column_data = [[] for _ in columns]
-
-    current_section = None
-    found_section = False
-
-    # TODO: handle line continuations
-    with magic_open(fobj_or_path, "rt", compression=compression) as fobj:
-        for line in fobj:
-            if line.startswith("#"):
-                current_section = line.lstrip("#").strip()
-                found_section = found_section or (current_section == section)
-
-            elif current_section != section:
-                continue
-
-            elif line.startswith("- "):
-                line = line[2:].strip()
-
-                line_data = re.split(r"\s+", line, len(columns) - 1)
-
-                if len(line_data) > len(columns):
-                    raise RuntimeError("unexpected behavior")
-
-                line_data = [*line_data] + [None] * (len(columns) - len(line_data))
-
-                for target, col, val in zip(column_data, columns, line_data):
-                    if col in parse_dates:
-                        val = pd.to_datetime(val)
-
-                    target.append(val)
-
-    if not found_section:
-        raise RuntimeError("Could not find section")
-
-    result = collections.OrderedDict(
-        [
-            (col, pd.Series(data, name=col, dtype=dtype.get(col)))
-            for col, data in zip(columns, column_data)
-        ]
-    )
-    return pd.DataFrame(result)
-
-
 # ########################################################################## #
 #                               TQDM Helpers                                 #
 # ########################################################################## #
@@ -2356,398 +1550,6 @@ def clear_tqdm():
 
     for inst in list(tqdm.tqdm._instances):
         inst.close()
-
-
-# ########################################################################## #
-#                               Looping                                      #
-# ########################################################################## #
-
-
-status_characters = ["\u25AB", " "] + [
-    chr(ord("\u2800") + v) for v in it.accumulate([64, 128, 4, 32, 2, 16, 1, 8])
-]
-
-running_characters = ["-", "\\", "|", "/"]
-
-current_loop: Optional["Loop"] = None
-current_label = None
-
-
-def loop_over(iterable, label: Union[str, Callable[[], str]] = None, keep=False):
-    """Simplified interface to Loop.over.
-
-    :param label:
-        if a callable, it should return a str that is used as the loop label.
-    """
-    global current_loop, current_label
-    if label is not None:
-        current_label = label
-
-    for current_loop, item in Loop.over(iterable):
-        yield item
-
-        assert current_loop is not None
-        current_loop.print(lambda: "{}{}".format(current_loop, get_current_label()))
-
-    assert current_loop is not None
-    current_loop.print(
-        "{}{}".format(current_loop, get_current_label()),
-        force=True,
-        end="\n" if keep else "\r",
-    )
-    current_loop = None
-
-
-def loop_nest(iterable, label: Union[str, Callable[[], str]] = None):
-    global current_loop, current_label
-    if current_loop is None:
-        raise RuntimeError("Can only nest within an existing loop")
-
-    if label is not None:
-        current_label = label
-
-    for item in current_loop.nest(iterable):
-        yield item
-        current_loop.print(lambda: "{}{}".format(current_loop, get_current_label()))
-
-
-def get_current_label():
-    if current_label is None:
-        return ""
-
-    if callable(current_label):
-        return " {}".format(current_label())
-
-    return " {}".format(current_label)
-
-
-class LoopState(enum.Enum):
-    pending = "pending"
-    running = "running"
-    done = "done"
-    aborted = "aborted"
-
-
-class LoopPrintDispatch:
-    def __get__(self, instance, owner):
-        if instance is None:
-            return owner._static_print
-
-        else:
-            return instance._print
-
-
-class Debouncer:
-    def __init__(self, interval, *, now=time.time):
-        self.last_invocation = 0
-        self.interval = interval
-        self.now = now
-
-    def should_run(self, now=None):
-        if self.interval is False:
-            return True
-
-        if now is None:
-            now = self.now()
-
-        return now > self.last_invocation + self.interval
-
-    def invoked(self, now=None):
-        if now is None:
-            now = self.now()
-
-        self.last_invocation = now
-
-
-class Loop:
-    """A flexible progressbar indicator.
-
-    It's designed to make printing custom messages and customizing the loop
-    style easy.
-
-    The following format codes are recognized:
-
-    * ``[``: in the beginning, indicates that the progress bar will be
-      surrounded by brackets.
-    * ``-``: in the beginning, indicates that the parts of the progress bar
-      will be printed without automatic spaces
-    * ``B``: a one character bar
-    * ``b``: the full bar
-    * ``t``: the total runtime so far
-    * ``e``: the expected total runtime
-    * ``r``: the expected remaining runtime
-    * ``f``: the fraction of work performed so far
-    * additional characters will be included verbatim
-
-    To access nested loop use the getitem notation, e.g. ``loop[1]``.
-
-    """
-
-    @classmethod
-    def range(cls, *range_args, time=time.time, debounce=0.1):
-        return cls.over(range(*range_args), time=time, debounce=debounce)
-
-    @classmethod
-    def over(cls, iterable, length=None, time=time.time, debounce=0.1):
-        loop = cls(time=time, debounce=debounce)
-
-        for item in loop.nest(iterable, length):
-            yield loop, item
-
-    print = LoopPrintDispatch()
-
-    @staticmethod
-    def _static_print(
-        str: Union[str, Callable[[], str]],
-        width=120,
-        end="\r",
-        file=None,
-        flush=False,
-        force=False,
-        lab=False,
-    ):
-        if callable(str):
-            str = str()
-
-        if lab is True and end == "\r":
-            print(end + str.ljust(width)[:width], end="", file=file, flush=flush)
-
-        else:
-            print(str.ljust(width)[:width], end=end, file=file, flush=flush)
-
-    def _print(
-        self, str: str, width=120, end="\r", file=None, flush=False, force=False
-    ):
-        now = self.now()
-        if not force and not self.debouncer.should_run(now=now):
-            return
-
-        self.debouncer.invoked(now=now)
-        self._static_print(str, width=width, end=end, file=file, flush=flush)
-
-    def will_print(self, now=None):
-        """Check whether the print invocation will be debounced."""
-        return self.debouncer.should_run(now)
-
-    def __init__(self, time=time.time, stack=None, root=None, debounce=0.1):
-        if stack is None:
-            stack = []
-
-        self.now = time
-        self._stack = stack
-        self._root = root
-        self._last_print = 0
-        self.debouncer = Debouncer(debounce)
-
-    def __getitem__(self, idx):
-        return Loop(time=self.now, stack=self._stack[idx:], root=self._stack[idx])
-
-    def push(self, length=None, idx=0):
-        frame = LoopFrame(start=self.now(), idx=idx, length=length)
-
-        self._stack.append(frame)
-        if self._root is None:
-            self._root = frame
-
-        return frame
-
-    def pop(self, frame):
-        if frame.state not in {LoopState.aborted, LoopState.done}:
-            frame.finish()
-
-        self._stack = [s for s in self._stack if s is not frame]
-
-    def nest(self, iterable, length=None):
-        if length is None:
-            try:
-                length = len(iterable)
-
-            except TypeError:
-                pass
-
-        frame = self.push(length=length)
-
-        for item in iterable:
-            try:
-                yield item
-
-            # NOTE: this is reached, when the generator is not fully consumed
-            except GeneratorExit:
-                frame.abort()
-                self.pop(frame)
-                raise
-
-            frame.finish_item()
-
-        self.pop(frame)
-
-    def get_info(self):
-        now = self.now()
-
-        info = dict(
-            fraction=self._get_fraction(self._stack),
-            total=now - self._root.start,
-            state=self._root.state,
-            idx=self._root.idx,
-        )
-
-        if info["fraction"] is not None:
-            info["expected"] = info["total"] / info["fraction"]
-
-        else:
-            info["expected"] = None
-
-        return info
-
-    @classmethod
-    def _get_fraction(cls, stack):
-        if not stack:
-            return 1
-
-        root, *stack = stack
-
-        if root.length is None:
-            return None
-
-        return min(1.0, (root.idx + cls._get_fraction(stack)) / root.length)
-
-    def __str__(self):
-        return format(self)
-
-    def __format__(self, format_spec):
-        status = self.get_info()
-
-        if status["state"] is LoopState.pending:
-            return "[pending]"
-
-        elif status["state"] is LoopState.aborted:
-            return f'[aborted. took {tdformat(status["total"])}]'
-
-        elif status["state"] is LoopState.done:
-            return f'[done. took {tdformat(status["total"])}]'
-
-        elif status["state"] is not LoopState.running:
-            raise RuntimeError("unknown state")
-
-        if not format_spec:
-            format_spec = "[bt/e"
-
-        if format_spec[:1] == "[":
-            outer = "[", "]"
-            format_spec = format_spec[1:]
-
-        else:
-            outer = "", ""
-
-        if format_spec[:1] == "-":
-            join_char = ""
-            format_spec = format_spec[1:]
-
-        else:
-            join_char = " "
-
-        result = [self._loop_formats.get(c, lambda _: c)(status) for c in format_spec]
-        return outer[0] + join_char.join(result) + outer[1]
-
-    _loop_formats = {
-        "B": lambda status: loop_bar(status, n=1),
-        "b": lambda status: loop_bar(status),
-        "t": lambda status: tdformat(status["total"]),
-        "e": lambda status: tdformat(status["expected"]),
-        "r": lambda status: tdformat(status["expected"] - status["total"]),
-        "f": lambda status: f"{status['fraction']:.1%}",
-    }
-
-
-class LoopFrame:
-    def __init__(self, start, idx=0, length=None, state=LoopState.running):
-        if length is not None:
-            length = int(length)
-
-        self.start = start
-        self.idx = idx
-        self.length = length
-        self.state = state
-
-    def copy(self):
-        return LoopFrame(
-            start=self.start, idx=self.idx, length=self.length, state=self.state
-        )
-
-    def finish_item(self):
-        self.idx += 1
-
-    def abort(self):
-        self.state = LoopState.aborted
-
-    def finish(self):
-        self.state = LoopState.done
-
-    def __repr__(self):
-        return "LoopFrame(...) <state={!r}, start={!r}>".format(self.state, self.start)
-
-
-def tdformat(time_delta):
-    """Format a timedelta given in seconds or as a ``datetime.timedelta``.
-    """
-    if time_delta is None:
-        return "?"
-
-    if hasattr(time_delta, "total_seconds"):
-        time_delta = time_delta.total_seconds()
-
-    time_delta = float(time_delta)
-
-    if not math.isfinite(time_delta):
-        return repr(time_delta)
-
-    # TODO: handle negative differences?
-    time_delta = abs(time_delta)
-
-    d = dict(
-        weeks=int(time_delta // (7 * 24 * 60 * 60)),
-        days=int(time_delta % (7 * 24 * 60 * 60) // (24 * 60 * 60)),
-        hours=int(time_delta % (24 * 60 * 60) // (60 * 60)),
-        minutes=int(time_delta % (60 * 60) // 60),
-        seconds=time_delta % 60,
-    )
-
-    if d["weeks"] > 0:
-        return "{weeks}w {days}d".format(**d)
-
-    elif d["days"] > 0:
-        return "{days}d {hours}h".format(**d)
-
-    elif d["hours"] > 0:
-        return "{hours}h {minutes}m".format(**d)
-
-    elif d["minutes"] > 0:
-        return "{minutes}m {seconds:.0f}s".format(**d)
-
-    else:
-        return "{seconds:.2f}s".format(**d)
-
-
-def loop_bar(status, n=10):
-    if status["fraction"] is not None:
-        return ascii_bar(status["fraction"], n=n)
-
-    return running_characters[status["idx"] % len(running_characters)]
-
-
-def ascii_bar(u, n=10):
-    """Format a ASCII progressbar"""
-    u = max(0.00, min(0.99, u))
-
-    done = int((n * u) // 1)
-    rest = max(0, n - done - 1)
-
-    c = int(((n * u) % 1) * len(status_characters))
-    return (
-        status_characters[-1] * done
-        + status_characters[c]
-        + status_characters[0] * rest
-    )
 
 
 # ###################################################################### #

@@ -97,7 +97,7 @@ def n2t(obj, dtype=None, device=None):
     if isinstance(device, str):
         device = torch.device(device)
 
-    return smap(lambda obj: torch.as_tensor(obj, dtype=dtype, device=device), obj)
+    return smap(lambda obj: torch.as_tensor(np.asarray(obj), dtype=dtype, device=device), obj)
 
 
 def call_torch(func, arg, *args, dtype=None, device=None, batch_size=64):
