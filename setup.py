@@ -10,7 +10,7 @@ setup(
     packages=PEP420PackageFinder.find("src"),
     package_dir={"": "src"},
     tests_require=["pytest"],
-    use_scm_version={"root": "..", "relative_to": __file__},
+    use_scm_version=True,
     url="https://github.com/chmp/misc-exp",
     setup_requires=["setuptools_scm"],
     data_files=[
