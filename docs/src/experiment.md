@@ -1,2 +1,0 @@
-.. automodule:: chmp.experiment
-    :members:

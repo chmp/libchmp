@@ -1,9 +1,6 @@
 # chmp - Support code for machine learning / data science experiments
 
 - [`chmp.ds`](docs/ds.md): data science support
-- [`chmp.experiment`](docs/experiment.md): support code to organize and analyse
-  machine learning experiments
-- [`chmp.label`](docs/label.md): support for labeling in IPython notebooks
 - [`chmp.parser`](docs/parser.md): helpers to write parsers using functional
   composition
 - [`chmp.torch_util`](docs/torch_utils.md): helpers to write pytorch models
