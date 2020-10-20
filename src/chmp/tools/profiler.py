@@ -146,8 +146,7 @@ def format_time(time):
 
 
 def sha1(obj):
-    """Create a hash for a json-encode-able object
-    """
+    """Create a hash for a json-encode-able object"""
     return int(str_sha1(obj)[:15], 16)
 
 

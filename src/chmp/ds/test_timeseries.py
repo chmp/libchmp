@@ -1,6 +1,6 @@
 import datetime
 import pandas as pd
-import pandas.util.testing as pdt
+import pandas.testing as pdt
 
 from chmp.ds import (
     timeshift_index,

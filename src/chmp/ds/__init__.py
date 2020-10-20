@@ -31,39 +31,8 @@ import time
 from types import ModuleType
 from typing import Any, Callable, Iterable, NamedTuple, Optional, Union
 
-try:
-    from sklearn.base import (
-        BaseEstimator,
-        TransformerMixin,
-        ClassifierMixin,
-        RegressorMixin,
-    )
-
-except ImportError:
-    from ._import_compat import (  # typing: ignore
-        BaseEstimator,
-        TransformerMixin,
-        ClassifierMixin,
-        RegressorMixin,
-    )
-
-    _HAS_SK_LEARN = False
-
-
-else:
-    _HAS_SK_LEARN = True
-
-
-try:
-    from daft import PGM
-
-except ImportError:
-    from ._import_compat import PGM  # typing: ignore
-
-    _HAS_DAFT = False
-
-else:
-    _HAS_DAFT = True
+default_sequences = (tuple,)
+default_mappings = (dict,)
 
 
 def reload(*modules_or_module_names: Union[str, ModuleType]) -> Optional[ModuleType]:
@@ -75,15 +44,6 @@ def reload(*modules_or_module_names: Union[str, ModuleType]) -> Optional[ModuleT
         mod = importlib.reload(module_or_module_name)
 
     return mod
-
-
-def import_object(obj):
-    def _import_obj(obj):
-        module, _, name = obj.partition(":")
-        module = importlib.import_module(module)
-        return getattr(module, name)
-
-    return sapply(_import_obj, obj)
 
 
 def define(func):
@@ -184,7 +144,7 @@ class Object:
 
         else:
             (seed,) = args
-            if not isinstance(seed, collections.Mapping):
+            if not isinstance(seed, collections.abc.Mapping):
                 seed = vars(seed)
 
         for k, v in dict(seed, **kwargs).items():
@@ -304,25 +264,6 @@ def nth(iterable, n, default=undefined):
     return default
 
 
-def item(iterable, default=undefined):
-    """Given a single item iterable return this item."""
-    found = undefined
-
-    for item in iterable:
-        if found is not undefined:
-            raise ValueError("More than one value to unpack")
-
-        found = item
-
-    if found is not undefined:
-        return found
-
-    if default is not undefined:
-        return default
-
-    raise ValueError("Need at least one item or a default")
-
-
 def collect(iterable):
     result = {}
     for k, v in iterable:
@@ -404,27 +345,27 @@ def get_color_cycle(n=None):
 
 @contextlib.contextmanager
 def mpl_figure(
-    n_rows=None, 
-    n_cols=None, 
-    n_axis=None,
-    wspace=1.0, 
+    n_rows=None,
+    n_cols=None,
+    n_axes=None,
+    wspace=1.0,
     hspace=1.5,
     axis_height=2.5,
     axis_width=3.5,
-    left_margin=0.5, 
-    right_margin=0.1, 
-    top_margin=0.1, 
+    left_margin=0.5,
+    right_margin=0.1,
+    top_margin=0.1,
     bottom_margin=0.5,
-    title=None
+    title=None,
 ):
     import matplotlib.pyplot as plt
 
-    n_rows, n_cols, n_axis = _normalize_figure_args(n_rows, n_cols, n_axis)
-    
+    n_rows, n_cols, n_axes = _normalize_figure_args(n_rows, n_cols, n_axes)
+
     width = left_margin + right_margin + (n_cols - 1) * wspace + n_cols * axis_width
     height = bottom_margin + top_margin + (n_rows - 1) * hspace + n_rows * axis_height
-    
-    gridspec_kw=dict(
+
+    gridspec_kw = dict(
         bottom=bottom_margin / height,
         top=1.0 - top_margin / height,
         left=left_margin / width,
@@ -432,53 +373,61 @@ def mpl_figure(
         wspace=wspace / axis_width,
         hspace=hspace / axis_height,
     )
-    
-    _, axes = plt.subplots(n_rows, n_cols, figsize=(width, height), gridspec_kw=gridspec_kw)
-    
+
+    _, axes = plt.subplots(
+        n_rows, n_cols, figsize=(width, height), gridspec_kw=gridspec_kw
+    )
+    axes = axes.flatten()
+    used_axes, unused_axes = axes[:n_axes], axes[n_axes:]
+
     if title is not None:
         plt.suptitle(title)
-    
-    yield axes.flatten()[:n_axis]
+
+    for ax in unused_axes:
+        ax.remove()
+
+    yield used_axes
+
+    # TODO: add support to save the figure, close it, etc..
 
 
-def _normalize_figure_args(n_rows, n_cols, n_axis):
+def _normalize_figure_args(n_rows, n_cols, n_axes):
     has_rows = n_rows is not None
     has_cols = n_cols is not None
-    has_axis = n_axis is not None
-    
+    has_axis = n_axes is not None
+
     if has_rows and has_cols and has_axis:
         pass
-    
+
     elif has_rows and has_cols and not has_axis:
-        n_axis = n_rows * n_cols
-        
+        n_axes = n_rows * n_cols
+
     elif has_rows and not has_cols and has_axis:
-        n_cols = n_axis // n_rows + ((n_axis % n_rows) != 0)
-    
+        n_cols = n_axes // n_rows + ((n_axes % n_rows) != 0)
+
     elif not has_rows and has_cols and has_axis:
-        n_rows = n_axis // n_cols + ((n_axis % n_cols) != 0)
-    
+        n_rows = n_axes // n_cols + ((n_axes % n_cols) != 0)
+
     elif not has_rows and not has_cols and has_axis:
         n_cols = 1
-        n_rows = n_axis // n_cols + ((n_axis % n_cols) != 0)
-    
+        n_rows = n_axes // n_cols + ((n_axes % n_cols) != 0)
+
     elif not has_rows and has_cols and not has_axis:
         n_rows = 1
-        n_axis = n_rows * n_cols
-    
+        n_axes = n_rows * n_cols
+
     elif has_rows and not has_cols and not has_axis:
         n_cols = 1
-        n_axis = n_rows * n_cols
-        
+        n_axes = n_rows * n_cols
+
     elif not has_rows and not has_cols and not has_axis:
         n_rows = 1
         n_cols = 1
-        n_axis = 1
-    
-    
-    assert n_axis <= n_rows * n_cols
-    
-    return n_rows, n_cols, n_axis
+        n_axes = 1
+
+    assert n_axes <= n_rows * n_cols
+
+    return n_rows, n_cols, n_axes
 
 
 @contextlib.contextmanager
@@ -492,20 +441,12 @@ def mpl_axis(
     suptitle=None,
     xscale=None,
     yscale=None,
-    caption=None,
     xlim=None,
     ylim=None,
     xticks=None,
     yticks=None,
     xformatter: Optional[Callable[[float, float], str]] = None,
     yformatter: Optional[Callable[[float, float], str]] = None,
-    left=None,
-    top=None,
-    bottom=None,
-    right=None,
-    wspace=None,
-    hspace=None,
-    subplot=None,
     legend=None,
     colorbar=None,
     invert: Optional[str] = None,
@@ -536,10 +477,6 @@ def mpl_axis(
 
     if box is not None:
         plt.box(box)
-
-    if subplot is not None:
-        ax = plt.gca()
-        plt.subplot(*subplot)
 
     if xlabel is not None:
         plt.xlabel(xlabel)
@@ -592,16 +529,6 @@ def mpl_axis(
     if yformatter is not None:
         plt.gca().yaxis.set_major_formatter(plt.FuncFormatter(yformatter))
 
-    if caption is not None:
-        _caption(caption)
-
-    subplot_kwargs = _dict_of_optionals(
-        left=left, right=right, bottom=bottom, top=top, wspace=wspace, hspace=hspace
-    )
-
-    if subplot_kwargs:
-        plt.subplots_adjust(**subplot_kwargs)
-
     if legend is not None and legend is not False:
         if legend is True:
             plt.legend(loc="best")
@@ -611,9 +538,6 @@ def mpl_axis(
 
         else:
             plt.legend(**legend)
-
-    if subplot is not None:
-        plt.sca(ax)
 
     if colorbar is True:
         plt.colorbar()
@@ -631,21 +555,21 @@ def mpl_axis(
 
         for spec in grid:
             if isinstance(spec, bool):
-                b, which, axis = spec, "major", "both"
+                _b, _which, _axis = spec, "major", "both"
 
             elif isinstance(spec, str):
-                b, which, axis = True, "major", spec
+                _b, _which, _axis = True, "major", spec
 
             elif isinstance(spec, tuple) and len(spec) == 2:
-                b, which, axis = True, spec[0], spec[1]
+                _b, _which, _axis = True, spec[0], spec[1]
 
             elif isinstance(spec, tuple):
-                b, which, axis = spec
+                _b, _which, _axis = spec
 
             else:
                 raise RuntimeError()
 
-            plt.grid(b, which, axis)
+            plt.grid(_b, _which, _axis)
 
     if axis is not None and axis is not True:
         if axis is False:
@@ -655,41 +579,7 @@ def mpl_axis(
 
     # restore the previous axis
     if prev_ax is not None:
-            plt.sca(prev_ax)
-
-
-def diagonal(**kwargs):
-    """Draw a diagonal line in the current axis."""
-    import matplotlib.pyplot as plt
-
-    xmin, xmax = plt.xlim()
-    ymin, ymax = plt.ylim()
-
-    vmin = max(xmin, ymin)
-    vmax = min(xmax, ymax)
-
-    plt.plot([vmin, vmax], [vmin, vmax], **kwargs)
-
-
-def qlineplot(*, x, y, hue, data, ci=0.95):
-    """Plot  median as line, quantiles as shading.
-    """
-    import matplotlib.pyplot as plt
-
-    agg_data = data.groupby([x, hue])[y].quantile([1 - ci, 0.5, ci]).unstack()
-    hue_values = data[hue].unique()
-
-    for color, hue_value in colorize(hue_values):
-        subset = agg_data.xs(hue_value, level=hue)
-        plt.fill_between(subset.index, subset.iloc[:, 0], subset.iloc[:, 2], alpha=0.2)
-
-    for color, hue_value in colorize(hue_values):
-        subset = agg_data.xs(hue_value, level=hue)
-        plt.plot(subset.index, subset.iloc[:, 1], label=hue_value, marker=".")
-
-    plt.legend(loc="best")
-    plt.xlabel(x)
-    plt.ylabel(y)
+        plt.sca(prev_ax)
 
 
 def edges(x):
@@ -715,22 +605,6 @@ def center(u):
     return 0.5 * (u[1:] + u[:-1])
 
 
-def caption(s, size=13, strip=True):
-    """Add captions to matplotlib graphs."""
-    import matplotlib.pyplot as plt
-
-    if strip:
-        s = s.splitlines()
-        s = (i.strip() for i in s)
-        s = (i for i in s if i)
-        s = " ".join(s)
-
-    plt.figtext(0.5, 0, s, wrap=True, size=size, va="bottom", ha="center")
-
-
-_caption = caption
-
-
 def axtext(*args, **kwargs):
     """Add a text in axes coordinates (similar ``figtext``).
 
@@ -743,40 +617,6 @@ def axtext(*args, **kwargs):
 
     kwargs.update(transform=plt.gca().transAxes)
     plt.text(*args, **kwargs)
-
-
-def _prepare_xy(x, y, data=None, transform_x=None, transform_y=None, skip_nan=True):
-    if data is not None:
-        x = data[x]
-        y = data[y]
-
-    x, y = _optional_skip_nan(x, y, skip_nan=skip_nan)
-
-    if transform_x is not None:
-        x = transform_x(x)
-
-    if transform_y is not None:
-        y = transform_y(y)
-
-    return x, y
-
-
-def _find_changes(v):
-    import numpy as np
-
-    (changes,) = np.nonzero(np.diff(v))
-    changes = changes + 1
-    return changes
-
-
-def _optional_skip_nan(x, y, skip_nan=True):
-    import numpy as np
-
-    if not skip_nan:
-        return x, y
-
-    s = np.isfinite(y)
-    return x[s], y[s]
 
 
 def _dict_of_optionals(**kwargs):
@@ -912,10 +752,16 @@ def find_high_frequency_categories(s, min_frequency=0.02, n_max=None):
     return list(s.sort_values(ascending=False).iloc[:n_max].index)
 
 
-def as_frame(**kwargs):
+def as_frame(*args, **kwargs):
     import pandas as pd
 
-    return pd.DataFrame().assign(**kwargs)
+    if args and kwargs:
+        raise ValueError(
+            "as_frame cannot be called with args or kwargs at the same time"
+        )
+
+    args = list(args if args else ())
+    return pd.DataFrame(args).assign(**kwargs)
 
 
 def setdefaultattr(obj, name, value):
@@ -927,15 +773,17 @@ def setdefaultattr(obj, name, value):
 
 
 # keep for backwards compat
-def sapply(func, obj, sequences=(tuple,), mappings=(dict,)):
+def sapply(func, obj, sequences=default_sequences, mappings=default_mappings):
     return smap(func, obj, sequences=sequences, mappings=mappings)
 
 
 def szip(
-    iterable_of_objects, sequences=(tuple,), mappings=(dict,), return_schema=False
+    iterable_of_objects,
+    sequences=default_sequences,
+    mappings=default_mappings,
+    return_schema=False,
 ):
     """Zip but for deeply nested objects.
-
     For a list of nested set of objects return a nested set of list.
     """
     iterable_of_objects = iter(iterable_of_objects)
@@ -965,7 +813,7 @@ def szip(
     return target if return_schema is False else (target, schema)
 
 
-def flatten_with_index(obj, sequences=(tuple,), mappings=(dict,)):
+def flatten_with_index(obj, sequences=default_sequences, mappings=default_mappings):
     counter = iter(it.count())
     flat = []
 
@@ -977,20 +825,21 @@ def flatten_with_index(obj, sequences=(tuple,), mappings=(dict,)):
     return index, flat
 
 
-def unflatten(index, obj, sequences=(tuple,), mappings=(dict,)):
+def unflatten(index, obj, sequences=default_sequences, mappings=default_mappings):
     obj = list(obj)
     return smap(lambda idx: obj[idx], index, sequences=sequences, mappings=mappings)
 
 
-def smap(func, arg, *args, sequences=(tuple,), mappings=(dict,)):
+def smap(func, arg, *args, sequences=default_sequences, mappings=default_mappings):
     """A structured version of map.
-
     The structure is taken from the first arguments.
     """
     return _smap(func, arg, *args, path="$", sequences=sequences, mappings=mappings)
 
 
-def _smap(func, arg, *args, path, sequences=(tuple,), mappings=(dict,)):
+def _smap(
+    func, arg, *args, path, sequences=default_sequences, mappings=default_mappings
+):
     try:
         if isinstance(arg, sequences):
             return type(arg)(
@@ -1031,13 +880,51 @@ def _smap(func, arg, *args, path, sequences=(tuple,), mappings=(dict,)):
         raise SApplyError(f"Error in sappend at {path}: {e}") from e
 
 
+def copy_structure(
+    template, obj, sequences=default_sequences, mappings=default_mappings
+):
+    """Arrange ``obj`` into the structure of ``template``.
+    :param template:
+        the object of which top copy the structure
+    :param obj:
+        the object which to arrange into the structure. If it is
+        already structured, the template structure and its structure
+        must be the same or a value error is raised
+    """
+
+    template_schema = smap(
+        lambda _: None, template, sequences=sequences, mappings=mappings
+    )
+    obj_schema = smap(lambda _: None, obj, sequences=sequences, mappings=mappings)
+
+    if obj_schema is not None:
+        if obj_schema != template_schema:
+            raise ValueError("Misaligned structures")
+
+        return obj
+
+    return smap(lambda _: obj, template_schema, sequences=sequences, mappings=mappings)
+
+
+def assert_has_schema(
+    nested_obj, expected_schema, sequences=default_sequences, mappings=default_mappings
+):
+    actual_schema = smap(
+        lambda _: None, nested_obj, sequences=sequences, mappings=mappings
+    )
+
+    if actual_schema != expected_schema:
+        raise AssertionError(
+            f"Schemas do not match: {actual_schema} != {expected_schema}"
+        )
+
+
 class SApplyError(Exception):
     pass
 
 
 def json_numpy_default(obj):
-    """A default implementation for ``json.dump`` that deals with numpy datatypes.
-    """
+    """A default implementation for ``json.dump`` that deals with numpy datatypes."""
     import numpy as np
 
     int_types = (
@@ -1155,251 +1042,10 @@ def _get_caller_logger(depth=2):
 
 
 def find_categorical_columns(df):
-    """Find all categorical columns in the given dataframe.
-    """
+    """Find all categorical columns in the given dataframe."""
     import pandas.api.types as pd_types
 
     return [k for k, dtype in df.dtypes.items() if pd_types.is_categorical_dtype(dtype)]
-
-
-def filter_low_frequency_categories(
-    columns=None, min_frequency=0.02, other_category=None, n_max=None
-):
-    """Build a transformer to filter low frequency categories.
-
-    Usage::
-
-        pipeline = build_pipeline[
-            categories=filter_low_frequency_categories(),
-            predict=lgb.LGBMClassifier(),
-        )
-
-    """
-    if columns is not None and not isinstance(columns, (list, tuple)):
-        columns = [columns]
-
-    return FilterLowFrequencyTransfomer(columns, min_frequency, other_category, n_max)
-
-
-class FilterLowFrequencyTransfomer(BaseEstimator, TransformerMixin):
-    def __init__(
-        self, columns=None, min_frequency=0.02, other_category="other", n_max=None
-    ):
-        self.columns = columns
-        self.min_frequency = min_frequency
-        self.other_category = other_category
-        self.n_max = n_max
-
-        self._columns = columns
-        self._to_keep = {}
-
-    def fit(self, df, y=None):
-        if self._columns is None:
-            self._columns = find_categorical_columns(df)
-
-        for col in self._columns:
-            try:
-                to_keep = find_high_frequency_categories(
-                    df[col],
-                    min_frequency=self._get("min_frequency", col),
-                    n_max=self._get("n_max", col),
-                )
-
-            except Exception as e:
-                raise RuntimeError(
-                    f"cannot determine high frequency categories for {col} due to {e}"
-                )
-
-            self._to_keep[col] = to_keep
-
-        return self
-
-    def transform(self, df, y=None):
-        for col in self._columns:
-            df = df.assign(
-                **{
-                    col: fix_categories(
-                        df[col],
-                        self._to_keep[col],
-                        other_category=self._get("other_category", col),
-                    )
-                }
-            )
-
-        return df
-
-    def _get(self, key, col):
-        var = getattr(self, key)
-        return var[col] if isinstance(var, dict) else var
-
-
-def make_pipeline(**kwargs):
-    """Build a pipeline from named steps.
-
-    The order of the keyword arguments is retained. Note, this functionality
-    requires python ``>= 3.6``.
-
-    Usage::
-
-        pipeline = make_pipeline(
-            transform=...,
-            predict=...,
-        )
-
-    """
-    import sklearn.pipeline as sk_pipeline
-
-    if sys.version_info[:2] < (3, 6):
-        raise RuntimeError("pipeline factory requires deterministic kwarg order")
-
-    return sk_pipeline.Pipeline(list(kwargs.items()))
-
-
-class OneHotEncoder(BaseEstimator, TransformerMixin):
-    def __init__(self, columns=None):
-        self.columns = columns
-        self.columns_ = columns
-        self.levels_ = collections.OrderedDict()
-
-    def fit(self, x, y=None):
-        if self.columns_ is None:
-            self.columns_ = find_categorical_columns(x)
-
-        for col in self.columns_:
-            try:
-                self.levels_[col] = multi_type_sorted(x[col].unique())
-
-            except Exception as e:
-                raise RuntimeError(f"cannot fit {col}") from e
-
-        return self
-
-    def transform(self, x, y=None):
-        for col in self.columns_:
-            try:
-                assignments = {}
-                for level in self.levels_[col]:
-                    assignments[f"{col}_{level}"] = (x[col] == level).astype(float)
-
-                x = x.drop([col], axis=1).assign(**assignments)
-
-            except Exception as e:
-                raise RuntimeError(f"cannot transform {col}") from e
-
-        return x
-
-
-def waterfall(
-    obj,
-    col=None,
-    base=None,
-    total=False,
-    end_annot=None,
-    end_fmt=".g",
-    annot=False,
-    fmt="+.2g",
-    cmap="coolwarm",
-    xmin=0,
-    total_kwargs=None,
-    annot_kwargs=None,
-    **kwargs,
-):
-    """Plot a waterfall chart.
-
-    Usage::
-
-        series.pipe(waterfall, annot='top', fmt='+.1f', total=True)
-
-    """
-    import matplotlib.pyplot as plt
-    import numpy as np
-
-    if len(obj.shape) == 2 and col is None:
-        raise ValueError("need a column with 2d objects")
-
-    if col is not None:
-        top = obj[col] if not callable(col) else col(obj)
-
-    else:
-        top = obj
-
-    if base is not None:
-        bottom = obj[base] if not callable(base) else base(obj)
-
-    else:
-        bottom = top.shift(1).fillna(0)
-
-    if annot is True:
-        annot = "top"
-
-    if total_kwargs is None:
-        total_kwargs = {}
-
-    if annot_kwargs is None:
-        annot_kwargs = {}
-
-    if end_annot is None:
-        end_annot = annot is not False
-
-    total_kwargs = {"color": (0.5, 0.75, 0.5), **total_kwargs}
-
-    if annot == "top":
-        annot_kwargs = {"va": "bottom", "ha": "center", **annot_kwargs}
-        annot_y = np.maximum(top, bottom)
-        total_y = max(top.iloc[-1], 0)
-
-    elif annot == "bottom":
-        annot_kwargs = {"va": "bottom", "ha": "center", **annot_kwargs}
-        annot_y = np.minimum(top, bottom)
-        total_y = min(top.iloc[-1], 0)
-
-    elif annot == "center":
-        annot_kwargs = {"va": "center", "ha": "center", **annot_kwargs}
-        annot_y = 0.5 * (top + bottom)
-        total_y = 0.5 * top.iloc[-1]
-
-    elif annot is not False:
-        raise ValueError(f"Cannot annotate with {annot}")
-
-    height = top - bottom
-
-    kwargs = {"color": colormap(height, cmap=cmap, center=True), **kwargs}
-    plt.bar(xmin + np.arange(len(height)), height, bottom=bottom, **kwargs)
-
-    if annot is not False:
-        for x, y, v in zip(it.count(xmin), annot_y, height):
-            if x == xmin:
-                continue
-
-            plt.text(x, y, ("%" + fmt) % v, **annot_kwargs)
-
-    if end_annot is not False:
-        plt.text(xmin, annot_y.iloc[0], ("%" + end_fmt) % top.iloc[0], **annot_kwargs)
-
-        if total:
-            plt.text(
-                xmin + len(annot_y),
-                total_y,
-                ("%" + end_fmt) % top.iloc[-1],
-                **annot_kwargs,
-            )
-
-    for idx, p in zip(it.count(xmin), bottom):
-        if idx == xmin:
-            continue
-
-        plt.plot([idx - 1 - 0.4, idx + 0.4], [p, p], ls="--", color="0.5")
-
-    plt.xticks(xmin + np.arange(len(height)), list(height.index))
-
-    if total:
-        plt.bar([xmin + len(bottom)], [top.iloc[-1]], **total_kwargs)
-        plt.plot(
-            [xmin + len(bottom) - 1 - 0.4, xmin + len(bottom) + 0.4],
-            [top.iloc[-1], top.iloc[-1]],
-            ls="--",
-            color="0.5",
-        )
 
 
 def colormap(x, cmap="coolwarm", center=True, vmin=None, vmax=None, norm=None):
@@ -1426,79 +1072,6 @@ def colormap(x, cmap="coolwarm", center=True, vmin=None, vmax=None, norm=None):
     x = np.clip((x - vmin) / (vmax - vmin), 0, 1)
 
     return cm.get_cmap(cmap)(x)
-
-
-def bar(s, cmap="viridis", color=None, norm=None, orientation="vertical"):
-    import matplotlib.colors
-    import matplotlib.pyplot as plt
-
-    if norm is None:
-        norm = matplotlib.colors.NoNorm()
-
-    if color is None:
-        color = colormap(s, cmap=cmap, norm=norm)
-
-    indices = range(len(s))
-
-    if orientation == "vertical":
-        plt.bar(indices, s, color=color)
-        plt.xticks(indices, s.index)
-
-    else:
-        plt.barh(indices, s, color=color)
-        plt.yticks(indices, s.index)
-
-
-# TODO: make sureit can be called with a dataframe
-def qplot(
-    x=None,
-    y=None,
-    data=None,
-    alpha=1.0,
-    fill_alpha=0.8,
-    color=None,
-    ax=None,
-    **line_kwargs,
-):
-    import numpy as np
-    import matplotlib.pyplot as plt
-
-    if y is None and x is not None:
-        x, y = y, x
-
-    if y is None:
-        raise ValueError("need data to plot")
-
-    if isinstance(y, tuple) or (isinstance(y, np.ndarray) and y.ndim == 2):
-        y = tuple(y)
-
-    else:
-        y = (y,)
-
-    if data is not None:
-        y = tuple(data[c] for c in y)
-
-    # TODO: use index if data a dataframe
-    if x is None:
-        x = np.arange(len(y[0]))
-
-    elif data is not None:
-        x = data[x]
-
-    if ax is None:
-        ax = plt.gca()
-
-    if color is None:
-        color = ax._get_lines.get_next_color()
-
-    n = len(y) // 2
-    fill_alpha = (1 / n) if fill_alpha is None else (fill_alpha / n)
-
-    for i in range(n):
-        plt.fill_between(x, y[i], y[-(i + 1)], alpha=fill_alpha * alpha, color=color)
-
-    if len(y) % 2 == 1:
-        plt.plot(x, y[n], alpha=alpha, color=color, **line_kwargs)
 
 
 def expand(low, high, change=0.05):
@@ -1548,7 +1121,8 @@ def clear_tqdm():
     """Close any open TQDM instances to prevent display errors"""
     import tqdm
 
-    for inst in list(tqdm.tqdm._instances):
+    # NOTE: the _instances attribute is only set on first use of tqdm
+    for inst in list(getattr(tqdm.tqdm, "_instances", [])):
         inst.close()
 
 
@@ -1563,8 +1137,7 @@ max_32_bit_integer = 0xFFFF_FFFF
 
 
 def sha1(obj):
-    """Create a hash for a json-encode-able object
-    """
+    """Create a hash for a json-encode-able object"""
     return int(str_sha1(obj)[:15], 16)
 
 
@@ -1595,20 +1168,17 @@ def randint(obj, a, b):
 
 
 def np_seed(obj):
-    """Return a seed usable by numpy.
-    """
+    """Return a seed usable by numpy."""
     return [randrange((obj, i), max_32_bit_integer) for i in range(10)]
 
 
 def tf_seed(obj):
-    """Return a seed usable by tensorflow.
-    """
+    """Return a seed usable by tensorflow."""
     return randrange(obj, max_32_bit_integer)
 
 
 def std_seed(obj):
-    """Return a seed usable by python random module.
-    """
+    """Return a seed usable by python random module."""
     return str_sha1(obj)
 
 
@@ -1665,8 +1235,7 @@ def to_start_of_week(s):
 
 
 def to_time_in_week(s, unit=None):
-    """Return the timedelta relative to weekstart for the datetime given in ``s``.
-    """
+    """Return the timedelta relative to weekstart for the datetime given in ``s``."""
     import pandas as pd
 
     s = s - to_start_of_week(s)

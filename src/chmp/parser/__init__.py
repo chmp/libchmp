@@ -49,8 +49,7 @@ def _find_latest_error(debug):
 
 
 def inspect_parser(parser):
-    """Recursively inspect a parser.
-    """
+    """Recursively inspect a parser."""
     if hasattr(parser, "_parser_parameters"):
         result = extract_parameters(parser)
         result["name"] = parser.__name__
@@ -198,8 +197,7 @@ def any():
 
 @parameters("parsers", "flatten")
 def sequential(parser, *parsers, flatten=True):
-    """Match a sequence of parsers exactly.
-    """
+    """Match a sequence of parsers exactly."""
     parsers = (parser,) + parsers
 
     def sequential_parser(tokens, offset):
@@ -226,8 +224,7 @@ def sequential(parser, *parsers, flatten=True):
 
 @parameters("parsers")
 def first(parser, *parsers):
-    """Return the result of the first parser to match.
-    """
+    """Return the result of the first parser to match."""
     parsers = (parser,) + parsers
 
     def first_parser(tokens, offset):
@@ -280,8 +277,7 @@ def repeat(parser, *parsers, flatten=True):
 
 @parameters("parser")
 def ignore(parser):
-    """Ignore the result of parser.
-    """
+    """Ignore the result of parser."""
 
     def ignore_parser(tokens, offset):
         try:
@@ -300,8 +296,7 @@ def ignore(parser):
 
 @parameters("parser", "default")
 def optional(parser, default=()):
-    """If the parser matches return its result, otherwise the default.
-    """
+    """If the parser matches return its result, otherwise the default."""
 
     def optional_parser(tokens, offset):
         rest, result, d = parser(tokens, offset)
@@ -389,7 +384,7 @@ def regex(pattern, flags=0):
     Therefore, groups of interested should be named::
 
         >>> p.parse(p.regex(r"(?P<number>\\d+)"), ["123"])
-        [{'number': '123'}] 
+        [{'number': '123'}]
 
     """
     pattern = re.compile(pattern, flags=flags)
