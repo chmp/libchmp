@@ -18,8 +18,12 @@ from chmp.ds import (
     copy_structure,
     default_sequences,
     default_mappings,
+    undefined,
 )
 
+
+default_arrays = (np.ndarray,)
+default_tensors = (torch.Tensor,)
 
 default_batch_size = 32
 
@@ -88,40 +92,80 @@ def register_unknown_kl(type_p, type_q):
 
 
 def has_kl(type_p, type_q):
-    import torch
-
     return (type_p, type_q) in torch.distributions.kl._KL_REGISTRY
 
 
-def t2n(obj, *, dtype=None, sequences=default_sequences, mappings=default_mappings):
+def t2n(
+    obj=undefined,
+    *,
+    dtype=None,
+    sequences=default_sequences,
+    mappings=default_mappings,
+    tensors=default_tensors,
+):
     """Torch to numpy."""
+    if obj is undefined:
+        return ft.partial(
+            t2n, dtype=dtype, sequences=sequences, mappings=mappings, tensors=tensors
+        )
+
     if not callable(obj):
-        return _t2n_tensors(obj, dtype=dtype, sequences=sequences, mappings=mappings)
+        return _t2n_tensors(
+            obj, dtype=dtype, sequences=sequences, mappings=mappings, tensors=tensors
+        )
 
     @ft.wraps(obj)
     def wrapper(*args, **kwargs):
         args, kwargs = _t2n_tensors(
-            (args, kwargs), dtype=dtype, sequences=sequences, mappings=mappings
+            (args, kwargs),
+            dtype=dtype,
+            sequences=sequences,
+            mappings=mappings,
+            tensors=tensors,
         )
         return obj(*args, **kwargs)
 
     return wrapper
 
 
-def _t2n_tensors(obj, *, dtype, sequences, mappings):
+def _t2n_tensors(obj, *, dtype, sequences, mappings, tensors):
     dtype = copy_structure(obj, dtype, sequences=sequences, mappings=mappings)
-    return smap(_t2n_scalar, obj, dtype, sequences=sequences, mappings=mappings)
+    return smap(
+        ft.partial(_t2n_scalar, tensors=tensors),
+        obj,
+        dtype,
+        sequences=sequences,
+        mappings=mappings,
+    )
 
 
-def _t2n_scalar(obj, dtype):
-    obj = obj if not torch.is_tensor(obj) else obj.detach().cpu()
-    return np.asarray(obj, dtype=dtype)
+def _t2n_scalar(obj, dtype, tensors):
+    if not isinstance(obj, tensors):
+        return obj
+
+    return np.asarray(obj.detach().cpu(), dtype=dtype)
 
 
 def n2t(
-    obj, dtype=None, device=None, sequences=default_sequences, mappings=default_mappings
+    obj=undefined,
+    *,
+    dtype=None,
+    device=None,
+    sequences=default_sequences,
+    mappings=default_mappings,
+    arrays=default_arrays,
 ):
     """Numpy to torch."""
+    if obj is undefined:
+        return ft.partial(
+            n2t,
+            dtype=dtype,
+            device=device,
+            sequences=sequences,
+            mappings=mappings,
+            arrays=arrays,
+        )
+
     if not callable(obj):
         return _n2t_tensors(
             obj,
@@ -129,6 +173,7 @@ def n2t(
             device=device,
             sequences=sequences,
             mappings=mappings,
+            arrays=arrays,
         )
 
     @ft.wraps(obj)
@@ -139,20 +184,31 @@ def n2t(
             device=device,
             sequences=sequences,
             mappings=mappings,
+            arrays=arrays,
         )
         return obj(*args, **kwargs)
 
     return wrapper
 
 
-def _n2t_tensors(obj, *, dtype, device, sequences, mappings):
+def _n2t_tensors(obj, *, dtype, device, sequences, mappings, arrays):
     dtype = copy_structure(obj, dtype, sequences=sequences, mappings=mappings)
     device = copy_structure(obj, device, sequences=sequences, mappings=mappings)
 
-    return smap(_n2t_scalar, obj, dtype, device, sequences=sequences, mappings=mappings)
+    return smap(
+        ft.partial(_n2t_scalar, arrays=arrays),
+        obj,
+        dtype,
+        device,
+        sequences=sequences,
+        mappings=mappings,
+    )
 
 
-def _n2t_scalar(obj, dtype, device):
+def _n2t_scalar(obj, dtype, device, arrays):
+    if not isinstance(obj, arrays):
+        return obj
+
     if isinstance(dtype, str):
         dtype = getattr(torch, dtype)
 
@@ -160,6 +216,98 @@ def _n2t_scalar(obj, dtype, device):
         device = torch.device(device)
 
     return torch.as_tensor(np.asarray(obj), dtype=dtype, device=device)
+
+
+def t2t(
+    func=undefined,
+    *,
+    dtype=None,
+    returns=None,
+    device=None,
+    sequences=default_sequences,
+    mappings=default_mappings,
+    arrays=default_arrays,
+    tensors=default_tensors,
+):
+    """Equivalent  to ``n2t(t2n(func)(*args, **kwargs)``"""
+    if func is undefined:
+        return ft.partial(
+            t2t,
+            dtype=dtype,
+            returns=returns,
+            device=device,
+            sequences=sequences,
+            mappings=mappings,
+            arrays=arrays,
+            tensors=tensors,
+        )
+
+    @ft.wraps(func)
+    def wrapper(*args, **kwargs):
+        args, kwargs = t2n(
+            (args, kwargs),
+            dtype=dtype,
+            sequences=sequences,
+            mappings=mappings,
+            tensors=tensors,
+        )
+        res = func(*args, **kwargs)
+        return n2t(
+            res,
+            dtype=returns,
+            device=device,
+            sequences=sequences,
+            mappings=mappings,
+            arrays=arrays,
+        )
+
+    return wrapper
+
+
+def n2n(
+    func=undefined,
+    *,
+    dtype=None,
+    returns=None,
+    device=None,
+    sequences=default_sequences,
+    mappings=default_mappings,
+    arrays=default_arrays,
+    tensors=default_tensors,
+):
+    """Equivalent to ``t2n(n2t(func)(*args, **kwargs)``"""
+    if func is undefined:
+        return ft.partial(
+            n2n,
+            dtype=dtype,
+            returns=returns,
+            device=device,
+            sequences=sequences,
+            mappings=mappings,
+            arrays=arrays,
+            tensors=tensors,
+        )
+
+    @ft.wraps(func)
+    def wrapper(*args, **kwargs):
+        args, kwargs = n2t(
+            (args, kwargs),
+            dtype=dtype,
+            device=device,
+            sequences=sequences,
+            mappings=mappings,
+            arrays=arrays,
+        )
+        res = func(*args, **kwargs)
+        return t2n(
+            res,
+            dtype=returns,
+            sequences=sequences,
+            mappings=mappings,
+            tensors=tensors,
+        )
+
+    return wrapper
 
 
 def call_torch(func, arg, *args, dtype=None, device=None, batch_size=64):
@@ -224,21 +372,10 @@ def factorized_quadratic(x, weights):
     return 0.5 * res
 
 
-def masked_softmax(logits, mask, eps=1e-6, dim=-1):
-    """Compute a softmax with certain elements masked out."""
-    mask = mask.type(logits.type())
-    logits = mask * logits - (1 - mask) / eps
-
-    # ensure stability by normalizing with the maximum
-    max_logits, _ = logits.max(dim, True)
-    logits = logits - max_logits
-
-    p = mask * torch.exp(logits)
-    norm = p.sum(dim, True)
-    valid = (norm > eps).type(logits.type())
-
-    p = p / (valid * norm + (1 - valid))
-
+def masked_softmax(logits, mask, axis=-1, eps=1e-9):
+    keep = 1.0 - mask.type(logits.dtype)
+    p = keep * torch.softmax(logits * keep, axis=axis)
+    p = p / (eps + p.sum(axis=axis, keepdims=True))
     return p
 
 

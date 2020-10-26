@@ -5,7 +5,6 @@ from ._util import register_unknown_kl, fixed, optimized, optional_parameter
 
 __all__ = [
     "KLDivergence",
-    "SimpleBayesModel",
     "VariationalNormal",
     "VariationalHalfCauchy",
     "NormalModule",

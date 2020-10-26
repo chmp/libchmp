@@ -25,7 +25,8 @@ def test_factorized_quadratic_shape():
 
 def test_masked_softmax():
     actual = masked_softmax(
-        torch.tensor([1.0, 2.0, 3.0]), torch.tensor([1, 1, 0], dtype=torch.uint8)
+        torch.tensor([1.0, 2.0, 3.0]),
+        torch.tensor([False, False, True]),
     )
     actual = np.asarray(actual)
 
