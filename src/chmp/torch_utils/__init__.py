@@ -24,8 +24,17 @@ from chmp.ds import (
     undefined,
 )
 
+try:
+    import pandas as pd
 
-default_arrays = (np.ndarray,)
+except ImportError:
+    _pd_arrays = ()
+
+else:
+    _pd_arrays = (pd.Series, pd.DataFrame)
+
+
+default_arrays = (np.ndarray, *_pd_arrays)
 default_tensors = (torch.Tensor,)
 
 default_batch_size = 32
@@ -224,7 +233,13 @@ def _n2t_scalar(obj, dtype, device, arrays):
     if isinstance(device, str):
         device = torch.device(device)
 
-    return torch.as_tensor(np.asarray(obj), dtype=dtype, device=device)
+    obj = np.asarray(obj)
+
+    # torch cannot handle negative strides, make a copy to remove striding
+    if any(s < 0 for s in obj.strides):
+        obj = obj.copy()
+
+    return torch.as_tensor(obj, dtype=dtype, device=device)
 
 
 def t2t(
@@ -349,10 +364,19 @@ def call_torch(func, arg, *args, dtype=None, device=None, batch_size=64):
     return result
 
 
-def optimizer_step(optimizer, func):
+def optimizer_step(optimizer, func, *args, **kwargs):
     optimizer.zero_grad()
-    loss = func()
-    loss.backward()
+    loss = func(*args, **kwargs)
+
+    if isinstance(loss, tuple):
+        loss[0].backward()
+
+    elif isinstance(loss, dict):
+        loss["loss"].backward()
+
+    else:
+        loss.backward()
+
     optimizer.step()
 
     return smap(float, loss)

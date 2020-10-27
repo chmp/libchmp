@@ -44,6 +44,10 @@ def test_t2n_nested_structure():
     assert actual == expected
 
 
+def test_n2t_negative_strides():
+    n2t(np.arange(5)[::-1])
+
+
 def test_n2t_nested_structure():
     actual = n2t({"foo": np.asarray(0), "bar": (np.asarray(1), np.asarray(2))})
     expected = {
@@ -69,22 +73,8 @@ def test_n2t_decorator_example():
     func(x=np.random.normal(size=()))
 
 
-def test_n2t_dataframes_default():
-    """n2t does not handle DataFrames per default."""
-
-    @n2t
-    def func(x):
-        assert torch.is_tensor(x)
-        return x
-
-    with pytest.raises(AssertionError):
-        func(pd.DataFrame(np.random.normal(size=(5, 5))))
-
-
 def test_custom_arrays_args():
-    """n2t can be customized to handle DataFrames"""
-
-    @n2t(arrays=(np.ndarray, pd.DataFrame))
+    @n2t
     def func(x):
         assert torch.is_tensor(x)
         return x
