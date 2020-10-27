@@ -348,6 +348,7 @@ def mpl_figure(
     n_rows=None,
     n_cols=None,
     n_axes=None,
+    dpi=None,
     wspace=1.0,
     hspace=1.5,
     axis_height=2.5,
@@ -375,9 +376,18 @@ def mpl_figure(
     )
 
     _, axes = plt.subplots(
-        n_rows, n_cols, figsize=(width, height), gridspec_kw=gridspec_kw
+        n_rows,
+        n_cols,
+        figsize=(width, height),
+        gridspec_kw=gridspec_kw,
+        dpi=dpi,
     )
-    axes = axes.flatten()
+    if n_rows == 1 and n_cols == 1:
+        axes = (axes,)
+
+    else:
+        axes = tuple(axes.flatten())
+
     used_axes, unused_axes = axes[:n_axes], axes[n_axes:]
 
     if title is not None:
@@ -386,7 +396,7 @@ def mpl_figure(
     for ax in unused_axes:
         ax.remove()
 
-    yield used_axes
+    yield used_axes if n_axes != 1 else used_axes[0]
 
     # TODO: add support to save the figure, close it, etc..
 
@@ -772,9 +782,19 @@ def setdefaultattr(obj, name, value):
     return getattr(obj, name)
 
 
-# keep for backwards compat
-def sapply(func, obj, sequences=default_sequences, mappings=default_mappings):
-    return smap(func, obj, sequences=sequences, mappings=mappings)
+def transform_args(func, args, kwargs, transform, **transform_args):
+    """Transform the arguments of the function.
+
+    The arguments are normalized into a dictionary before being passed to the
+    transform function. The return value is a tuple of ``args, kwargs`` ready to
+    be passed to ``func``.
+    """
+    bound_args = inspect.signature(func).bind(*args, **kwargs)
+
+    transformed_args = transform(dict(bound_args.arguments), **transform_args)
+    bound_args.arguments.update(**transformed_args)
+
+    return bound_args.args, bound_args.kwargs
 
 
 def szip(

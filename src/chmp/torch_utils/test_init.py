@@ -3,7 +3,7 @@ import pandas as pd
 import pytest
 import torch
 
-from chmp.torch_utils import t2n, n2t, t2t, n2n
+from chmp.torch_utils import t2n, n2t, t2t, n2n, make_mlp
 
 
 def test_t2n_nested_structure():
@@ -104,10 +104,17 @@ def test_n2n_example():
 
 
 def test_t2t_example():
-    @t2t(dtype=(("float32", "float32"), {}))
+    @t2t(dtype=dict(x="float32", a="float32"))
     def func(x, a):
         assert isinstance(x, np.ndarray)
         return x
 
     res = func(np.random.normal(size=()), np.random.normal(size=()))
     assert isinstance(res, torch.Tensor)
+
+
+def test_make_mlp():
+    make_mlp(5, 5)
+    make_mlp(5, 5, activation=torch.nn.ReLU)
+    make_mlp(5, 5, hidden=(10,), activation=torch.nn.ReLU)
+    make_mlp(5, 5, hidden=10, activation=torch.nn.Softplus)

@@ -10,9 +10,12 @@ import torch
 import torch.nn.functional as F
 import torch.utils.data
 
+from typing import Union, Sequence
+
 from chmp.ds import (
     smap,
     szip,
+    transform_args,
     flatten_with_index,
     unflatten,
     copy_structure,
@@ -116,8 +119,11 @@ def t2n(
 
     @ft.wraps(obj)
     def wrapper(*args, **kwargs):
-        args, kwargs = _t2n_tensors(
-            (args, kwargs),
+        args, kwargs = transform_args(
+            obj,
+            args,
+            kwargs,
+            _t2n_tensors,
             dtype=dtype,
             sequences=sequences,
             mappings=mappings,
@@ -178,8 +184,11 @@ def n2t(
 
     @ft.wraps(obj)
     def wrapper(*args, **kwargs):
-        args, kwargs = _n2t_tensors(
-            (args, kwargs),
+        args, kwargs = transform_args(
+            obj,
+            args,
+            kwargs,
+            _n2t_tensors,
             dtype=dtype,
             device=device,
             sequences=sequences,
@@ -244,8 +253,11 @@ def t2t(
 
     @ft.wraps(func)
     def wrapper(*args, **kwargs):
-        args, kwargs = t2n(
-            (args, kwargs),
+        args, kwargs = transform_args(
+            func,
+            args,
+            kwargs,
+            _t2n_tensors,
             dtype=dtype,
             sequences=sequences,
             mappings=mappings,
@@ -290,8 +302,11 @@ def n2n(
 
     @ft.wraps(func)
     def wrapper(*args, **kwargs):
-        args, kwargs = n2t(
-            (args, kwargs),
+        args, kwargs = transform_args(
+            func,
+            args,
+            kwargs,
+            _n2t_tensors,
             dtype=dtype,
             device=device,
             sequences=sequences,
@@ -539,23 +554,30 @@ class _LookupFunction(torch.autograd.Function):
         return grad_output * backward_values, None, None, None, None
 
 
-def build_mlp(
-    in_features,
-    out_features,
+def make_mlp(
+    in_features: int,
+    out_features: int,
     *,
-    hidden=(),
+    hidden: Union[Sequence[int], int] = (),
     hidden_activation=torch.nn.ReLU,
-    activation=Identity,
+    activation=None,
     container=torch.nn.Sequential,
 ):
-    features = [in_features, *hidden, out_features]
+    if isinstance(hidden, int):
+        hidden = [hidden]
+
+    in_features = [in_features, *hidden]
+    out_features = [*hidden, out_features]
     activations = len(hidden) * [hidden_activation] + [activation]
 
     parts = []
-    for a, b, activation in zip(features[:-1], features[1:], activations):
-        parts += [torch.nn.Linear(a, b), activation()]
+    for a, b, activation in zip(in_features, out_features, activations):
+        parts += [torch.nn.Linear(a, b)]
 
-    return container(parts)
+        if activation is not None:
+            parts += [activation()]
+
+    return container(*parts) if len(parts) != 1 else parts[0]
 
 
 def make_data_loader(dataset, mode="fit", **kwargs):
