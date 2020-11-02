@@ -94,20 +94,6 @@ Return the first item of an iterable
 Return the last item of an iterable
 
 
-### `chmp.ds.item`
-`chmp.ds.item(iterable, default=<undefined>)`
-
-Given a single item iterable return this item.
-
-
-### `chmp.ds.kvpair`
-`chmp.ds.kvpair(*args, **kwargs)`
-
-kvpair(key, value)
-
-Initialize self.  See help(type(self)) for accurate signature.
-
-
 ### `chmp.ds.cell`
 `chmp.ds.cell(name=None)`
 
@@ -156,8 +142,8 @@ blue, green, red = get_color_cycle(3)
 ```
 
 
-### `chmp.ds.mpl_set`
-`chmp.ds.mpl_set(box=None, xlabel=None, ylabel=None, title=None, suptitle=None, xscale=None, yscale=None, caption=None, xlim=None, ylim=None, xticks=None, yticks=None, xformatter=None, yformatter=None, left=None, top=None, bottom=None, right=None, wspace=None, hspace=None, subplot=None, legend=None, colorbar=None, invert=None, ax=None, grid=None, axis=None)`
+### `chmp.ds.mpl_axis`
+`chmp.ds.mpl_axis(*args, **kwds)`
 
 Set various style related options of MPL.
 
@@ -172,85 +158,22 @@ Set various style related options of MPL.
   if given invert the different axes. Can be x, y, or xy.
 
 
-### `chmp.ds.diagonal`
-`chmp.ds.diagonal(**kwargs)`
+### `chmp.ds.errorband`
+`chmp.ds.errorband(data, *, y, yerr, x=None, **kwargs)`
 
-Draw a diagonal line in the current axis.
-
-
-### `chmp.ds.qlineplot`
-`chmp.ds.qlineplot(*, x, y, hue, data, ci=0.95)`
-
-Plot  median as line, quantiles as shading.
-
-
-### `chmp.ds.pgm`
-`chmp.ds.pgm(*, ax=None, nodes=(), edges=(), annotations=(), **kwargs)`
-
-Wrapper around [daft.PGM](http://daft-pgm.org/api/#daft.PGM) to allow fluid call chains.
+Plot erros as a band around a line
 
 Usage:
 
 ```
-(
-    pgm(observed_style="inner", ax=ax1)
-    .node("z", r"$Z$", 1.5, 2)
-    .node("x", r"$X$", 1, 1)
-    .node("y", r"$Y$", 2, 1)
-    .edge("z", "x")
-    .edge("x", "y")
-    .edge("z", "y")
-    .render(xlim=(1, 5), ylim=(1, 5))
-)
-```
-
-To annotate a node use:
-
-```
-.annotate(node_name, annotation_text)
-```
-
-Nodes can also be created without explicit lables (in which case the node
-name is used):
-
-```
-.node("z", 1, 1)
-node("z", "label", 1, 1)
+df.pipe(errorband, y="mean", yerr="std")
 ```
 
 
-#### `chmp.ds.pgm.update`
-`chmp.ds.pgm.update(nodes=None, edges=None, annotations=None)`
+### `chmp.ds.diagonal`
+`chmp.ds.diagonal(df, x, y, type='scatter', **kwargs)`
 
-Replace a full set of features.
-
-
-#### `chmp.ds.pgm.remove`
-`chmp.ds.pgm.remove(incoming=(), outgoing=())`
-
-Remove edges that point in or out of a the specified nodes.
-
-
-#### `chmp.ds.pgm.render`
-`chmp.ds.pgm.render(ax=None, axis=False, xlim=None, ylim=None, **kwargs)`
-
-Render the figure.
-
-#### Parameters
-
-* **ax** (*any*):
-  the axes to draw into. If not given, the axis specified in
-  __init__ or the current axes is used.
-* **xlim** (*any*):
-  the xlim to use. If not given, it is determined from the data.
-* **ylim** (*any*):
-  the ylim to use. If not given, it is determined from the data.
-* **kwargs** (*any*):
-  keyword arguments forward to mpl set.
-
-#### Returns
-
-the pgm object.
+Create a diagonal plot
 
 
 ### `chmp.ds.edges`
@@ -273,24 +196,6 @@ pcolor(edges(x), edges(y), v)
 Compute the center between edges.
 
 
-### `chmp.ds.caption`
-`chmp.ds.caption(s, size=13, strip=True)`
-
-Add captions to matplotlib graphs.
-
-
-### `chmp.ds.change_vspan`
-`chmp.ds.change_vspan(x, y, *, data=None, color=('w', '0.90'), transform_x=None, transform_y=None, skip_nan=True, **kwargs)`
-
-Plot changes in a quantity with vspans.
-
-
-### `chmp.ds.change_plot`
-`chmp.ds.change_plot(x, y, *, data=None, transform_x=None, transform_y=None, skip_nan=True, **kwargs)`
-
-Plot changes in a quantity with pyplot's standard plot function.
-
-
 ### `chmp.ds.axtext`
 `chmp.ds.axtext(*args, **kwargs)`
 
@@ -301,25 +206,6 @@ Usage:
 ```
 axtext(0, 0, 'text')
 ```
-
-
-### `chmp.ds.plot_gaussian_contour`
-`chmp.ds.plot_gaussian_contour(x, y, *, data=None, q=(0.99,), ax=None, **kwargs)`
-
-Plot isocontours of the maximum likelihood Gaussian for `x, y`.
-
-#### Parameters
-
-* **q** (*any*):
-  the quantiles to show.
-
-
-### `chmp.ds.to_markdown`
-`chmp.ds.to_markdown(df, index=False)`
-
-Return a string containg the markdown of the table.
-
-Depends on the `tabulate` dependency.
 
 
 ### `chmp.ds.index_query`
@@ -378,10 +264,21 @@ Find categories with high frequency.
   columns.
 
 
-### `chmp.ds.singledispatch_on`
-`chmp.ds.singledispatch_on(idx)`
+### `chmp.ds.as_frame`
+`chmp.ds.as_frame(*args, **kwargs)`
 
-Helper to dispatch on any argument, not only the first one.
+Build a dataframe from kwargs or positional args.
+
+Note, functions can be passed as kwargs. They will be evaluated with the
+current dataframe and their result assigned to the named column. For
+example:
+
+```
+as_frame(
+    x=np.random.uniform(-3, 3, 1_000),
+    y=lambda df: np.random.normal(df["x"], 0.5),
+)
+```
 
 
 ### `chmp.ds.setdefaultattr`
@@ -390,11 +287,20 @@ Helper to dispatch on any argument, not only the first one.
 `dict.setdefault` for attributes
 
 
+### `chmp.ds.transform_args`
+`chmp.ds.transform_args(func, args, kwargs, transform, **transform_args)`
+
+Transform the arguments of the function.
+
+The arguments are normalized into a dictionary before being passed to the
+transform function. The return value is a tuple of `args, kwargs` ready to
+be passed to `func`.
+
+
 ### `chmp.ds.szip`
 `chmp.ds.szip(iterable_of_objects, sequences=(<class 'tuple'>,), mappings=(<class 'dict'>,), return_schema=False)`
 
 Zip but for deeply nested objects.
-
 For a list of nested set of objects return a nested set of list.
 
 
@@ -402,26 +308,28 @@ For a list of nested set of objects return a nested set of list.
 `chmp.ds.smap(func, arg, *args, sequences=(<class 'tuple'>,), mappings=(<class 'dict'>,))`
 
 A structured version of map.
-
 The structure is taken from the first arguments.
+
+
+### `chmp.ds.copy_structure`
+`chmp.ds.copy_structure(template, obj, sequences=(<class 'tuple'>,), mappings=(<class 'dict'>,))`
+
+Arrange `obj` into the structure of `template`.
+
+#### Parameters
+
+* **template** (*any*):
+  the object of which to copy the structure
+* **obj** (*any*):
+  the object which to arrange into the structure. If it is
+  already structured, the template structure and its structure
+  must be the same or a value error is raised
 
 
 ### `chmp.ds.json_numpy_default`
 `chmp.ds.json_numpy_default(obj)`
 
 A default implementation for `json.dump` that deals with numpy datatypes.
-
-
-### `chmp.ds.bgloop`
-`chmp.ds.bgloop(tag, *iterables, runner=None)`
-
-Run a loop in a background thread.
-
-
-### `chmp.ds.Display`
-`chmp.ds.Display(obj=None)`
-
-An interactive display for use in background tasks.
 
 
 ### `chmp.ds.timed`
@@ -449,270 +357,10 @@ with timed():
 Find all categorical columns in the given dataframe.
 
 
-### `chmp.ds.filter_low_frequency_categories`
-`chmp.ds.filter_low_frequency_categories(columns=None, min_frequency=0.02, other_category=None, n_max=None)`
+### `chmp.ds.clear_tqdm`
+`chmp.ds.clear_tqdm()`
 
-Build a transformer to filter low frequency categories.
-
-Usage:
-
-```
-pipeline = build_pipeline[
-    categories=filter_low_frequency_categories(),
-    predict=lgb.LGBMClassifier(),
-)
-```
-
-
-### `chmp.ds.column_transform`
-`chmp.ds.column_transform(*args, **kwargs)`
-
-Build a transformer for a list of columns.
-
-Usage:
-
-```
-pipeline = build_pipeline(
-    transform=column_transform(['a', 'b'], np.abs),
-    classifier=sk_ensemble.GradientBoostingClassifier(),
-])
-```
-
-Or:
-
-```
-pipeline = build_pipeline(
-    transform=column_transform(
-        a=np.abs,
-        b=op.pos,
-    ),
-    classifier=sk_ensemble.GradientBoostingClassifier(),
-)
-```
-
-
-### `chmp.ds.build_pipeline`
-`chmp.ds.build_pipeline(**kwargs)`
-
-Build a pipeline from named steps.
-
-The order of the keyword arguments is retained. Note, this functionality
-requires python `>= 3.6`.
-
-Usage:
-
-```
-pipeline = build_pipeline(
-    transform=...,
-    predict=...,
-)
-```
-
-
-### `chmp.ds.transform`
-`chmp.ds.transform(*args, **kwargs)`
-
-Build a function transformer with args / kwargs bound.
-
-Usage:
-
-```
-pipeline = build_pipeline(
-    transform=transform(np.abs)),
-    classifier=sk_ensemble.GradientBoostingClassifier()),
-)
-```
-
-
-### `chmp.ds.FuncTransformer`
-`chmp.ds.FuncTransformer(func)`
-
-Simple **non-validating** function transformer.
-
-#### Parameters
-
-* **func** (*callable*):
-  the function to apply on transform
-
-
-### `chmp.ds.DataFrameEstimator`
-`chmp.ds.DataFrameEstimator(est)`
-
-Add support for dataframe use to sklearn estimators.
-
-
-### `chmp.ds.FitInfo`
-`chmp.ds.FitInfo(extractor, target=None)`
-
-Extract and store meta data of the dataframe passed to fit.
-
-
-### `chmp.ds.waterfall`
-`chmp.ds.waterfall(obj, col=None, base=None, total=False, end_annot=None, end_fmt='.g', annot=False, fmt='+.2g', cmap='coolwarm', xmin=0, total_kwargs=None, annot_kwargs=None, **kwargs)`
-
-Plot a waterfall chart.
-
-Usage:
-
-```
-series.pipe(waterfall, annot='top', fmt='+.1f', total=True)
-```
-
-
-### `chmp.ds.render_poyo`
-`chmp.ds.render_poyo(obj, params)`
-
-Lighweight POYO templating.
-
-Any callable in the tree will be called with params. Example:
-
-```
-template = {
-    "key": lambda params: params['value'],
-}
-
-render_poyo(template, {'value': 20})
-```
-
-
-### `chmp.ds.dashcb`
-`chmp.ds.dashcb(app, output, *inputs, figure=False)`
-
-Construct a dash callback using function annotations.
-
-#### Parameters
-
-* **app** (*dash.Dash*):
-  the dash app to build the callback for
-* **output** (*str*):
-  the output, as a string of the form `{component}:{property}`
-* **inputs** (*str*):
-  the inputs, as strings of the form `{component}:{property}`
-* **figure** (*bool*):
-  if True, the current matplotlib figure will be captured and returned as
-  a data URL. This allows to use matplotlib with dash. See the examples
-  below
-
-Consider the following dash callback:
-
-```
-@app.callback(dash.dependencies.Output('display', 'children'),
-              [dash.dependencies.Input('dropdown', 'value')])
-def update_display(value):
-    return 'Selected: "{}"'.format(value)
-```
-
-With dashcb, it can be written as:
-
-```
-@dashcb(app, 'display:children', 'dropdown:value')
-def update_display(value):
-    return 'Selected: "{}"'.format(value)
-```
-
-To use dash with matplotlib figure, define an `html.Img` element. For
-example with id `my_image`. Then the plot can be updated via:
-
-```
-@dashcb(app, 'my_image:src', 'dropdown:value', figure=True)
-def update_display(value):
-    plt.plot([1, 2, 3])
-    plt.title(value)
-```
-
-
-### `chmp.ds.dashmpl`
-`chmp.ds.dashmpl(func)`
-
-Capture the current matplotlib figure.
-
-
-### `chmp.ds.read_markdown_list`
-`chmp.ds.read_markdown_list(fobj_or_path, *, section, columns, dtype=None, parse_dates=None, compression=None)`
-
-Read a markdown file as a DataFrame.
-
-
-### `chmp.ds.loop_over`
-`chmp.ds.loop_over(iterable, label=None, keep=False)`
-
-Simplified interface to Loop.over.
-
-#### Parameters
-
-* **label** (*any*):
-  if a callable, it should return a str that is used as the loop label.
-
-
-### `chmp.ds.LoopState`
-`chmp.ds.LoopState(*args, **kwargs)`
-
-An enumeration.
-
-Initialize self.  See help(type(self)) for accurate signature.
-
-
-#### `chmp.ds.LoopState.pending`
-
-An enumeration.
-
-
-#### `chmp.ds.LoopState.running`
-
-An enumeration.
-
-
-#### `chmp.ds.LoopState.done`
-
-An enumeration.
-
-
-#### `chmp.ds.LoopState.aborted`
-
-An enumeration.
-
-
-### `chmp.ds.Loop`
-`chmp.ds.Loop(time=<built-in function time>, stack=None, root=None, debounce=0.1)`
-
-A flexible progressbar indicator.
-
-It's designed to make printing custom messages and customizing the loop
-style easy.
-
-The following format codes are recognized:
-
-- `[`: in the beginning, indicates that the progress bar will be
-  surrounded by brackets.
-- `-`: in the beginning, indicates that the parts of the progress bar
-  will be printed without automatic spaces
-- `B`: a one character bar
-- `b`: the full bar
-- `t`: the total runtime so far
-- `e`: the expected total runtime
-- `r`: the expected remaining runtime
-- `f`: the fraction of work performed so far
-- additional characters will be included verbatim
-
-To access nested loop use the getitem notation, e.g. `loop[1]`.
-
-
-#### `chmp.ds.Loop.will_print`
-`chmp.ds.Loop.will_print(now=None)`
-
-Check whether the print invocation will be debounced.
-
-
-### `chmp.ds.tdformat`
-`chmp.ds.tdformat(time_delta)`
-
-Format a timedelta given in seconds or as a `datetime.timedelta`.
-
-
-### `chmp.ds.ascii_bar`
-`chmp.ds.ascii_bar(u, n=10)`
-
-Format a ASCII progressbar
+Close any open TQDM instances to prevent display errors
 
 
 ### `chmp.ds.sha1`

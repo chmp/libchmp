@@ -42,15 +42,27 @@ class MyModule(torch.nn.Module):
 
 
 ### `chmp.torch_utils.t2n`
-`chmp.torch_utils.t2n(obj, dtype=None)`
+`chmp.torch_utils.t2n(obj=<undefined>, *, dtype=None, sequences=(<class 'tuple'>,), mappings=(<class 'dict'>,), tensors=(<class 'torch.Tensor'>,))`
 
 Torch to numpy.
 
 
 ### `chmp.torch_utils.n2t`
-`chmp.torch_utils.n2t(obj, dtype=None, device=None)`
+`chmp.torch_utils.n2t(obj=<undefined>, *, dtype=None, device=None, sequences=(<class 'tuple'>,), mappings=(<class 'dict'>,), arrays=(<class 'numpy.ndarray'>, <class 'pandas.core.series.Series'>, <class 'pandas.core.frame.DataFrame'>))`
 
 Numpy to torch.
+
+
+### `chmp.torch_utils.t2t`
+`chmp.torch_utils.t2t(func=<undefined>, *, dtype=None, returns=None, device=None, sequences=(<class 'tuple'>,), mappings=(<class 'dict'>,), arrays=(<class 'numpy.ndarray'>, <class 'pandas.core.series.Series'>, <class 'pandas.core.frame.DataFrame'>), tensors=(<class 'torch.Tensor'>,))`
+
+Equivalent  to `n2t(t2n(func)(*args, **kwargs)`
+
+
+### `chmp.torch_utils.n2n`
+`chmp.torch_utils.n2n(func=<undefined>, *, dtype=None, returns=None, device=None, sequences=(<class 'tuple'>,), mappings=(<class 'dict'>,), arrays=(<class 'numpy.ndarray'>, <class 'pandas.core.series.Series'>, <class 'pandas.core.frame.DataFrame'>), tensors=(<class 'torch.Tensor'>,))`
+
+Equivalent to `t2n(n2t(func)(*args, **kwargs)`
 
 
 ### `chmp.torch_utils.call_torch`
@@ -85,12 +97,6 @@ A factorized quadratic interaction.
   shape `(n_factors, in_features, out_features)`
 
 
-### `chmp.torch_utils.masked_softmax`
-`chmp.torch_utils.masked_softmax(logits, mask, eps=1e-06, dim=-1)`
-
-Compute a softmax with certain elements masked out.
-
-
 ### `chmp.torch_utils.find_module`
 `chmp.torch_utils.find_module(root, predicate)`
 
@@ -111,12 +117,6 @@ a `RuntimeError`.
 `chmp.torch_utils.DiagonalScaleShift(shift=None, scale=None)`
 
 Scale and shift the inputs along each dimension independently.
-
-
-### `chmp.torch_utils.Add`
-`chmp.torch_utils.Add(*children)`
-
-Apply all modules in parallel and add their outputs.
 
 
 ### `chmp.torch_utils.Do`
@@ -146,22 +146,6 @@ g, = torch.autograd.grad(iv(a), a, torch.ones_like(a))
 ```
 
 
-### `chmp.torch_utils.Transformer`
-`chmp.torch_utils.Transformer(key_module, query_module=None, value_module=None, flatten=False, search_x=None, search_y=None)`
-
-A attention / transformer Module.
-
-Masks be two-dimensional and compatible with `n_query, n_search`. This
-model also supports soft-masks. They must never be `0`. The hard masks
-must be binary `{0, 1}`.
-
-
-#### `chmp.torch_utils.Transformer.compute_weights`
-`chmp.torch_utils.Transformer.compute_weights(search_x, query_x, mask, soft_mask=None)`
-
-Compute weights with shape `(batch_size, n_samples, n_keys)`.
-
-
 ### `chmp.torch_utils.kl_divergence__gamma__log_normal`
 `chmp.torch_utils.kl_divergence__gamma__log_normal(p, q)`
 
@@ -169,4 +153,58 @@ Compute the kl divergence with a Gamma prior and LogNormal approximation.
 
 Taken from C. Louizos, K. Ullrich, M. Welling "Bayesian Compression for Deep Learning"
 https://arxiv.org/abs/1705.08665
+
+
+### `chmp.torch_utils.ESGradient`
+`chmp.torch_utils.ESGradient(parameters, *, n_samples=50, scale=0.5)`
+
+Estimate the gradient of a function using Evolution Strategies
+
+The gradient will be assigned to the `grad` property of the parameters.
+This way any PyTorch optimizer can be used. As the tensors are manipulated
+in-place, they must not require gradients. For modules or tensors call
+`requires_grad_(False)` before using `ESGradient`. The return value will
+be the mean and std of the loss.
+
+Usage:
+
+```
+grad_fn = ESGradient(model.parameters())
+optimizer = torch.optim.Adam(model.parameters())
+
+# ...
+optimizer.zero_grad()
+grad_fn(lambda: compute_loss(model))
+optimizer.step()
+```
+
+#### Parameters
+
+* **parameters** (*any*):
+  the parameters as an iterable :param n_samples: the
+  number of samples with which to estimate the gradient :param scale: the
+  scale of the perturbation to use. Can be passed as a list with the same
+  length as parameters to give different scales for each parameter.
+
+
+### `chmp.torch_utils.update_moving_average`
+`chmp.torch_utils.update_moving_average(alpha, average, value)`
+
+Update iterables of tensors by an exponentially moving average.
+
+If `average` and `value` are passed as module parameters, this function
+can be used to make one module the moving average of the other module:
+
+```
+target_value_function = copy.copy(value_function)
+target_value_function.requires_grad_(False)
+
+# ...
+
+update_moving_average(
+    0.9,
+    target_value_function.parameters(),
+    value_function.parameters(),
+)
+```
 

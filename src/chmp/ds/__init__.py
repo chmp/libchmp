@@ -643,6 +643,41 @@ def errorband(data, *, x=None, y, yerr, **kwargs):
         plt.ylabel(ylabel)
 
 
+def diagonal(df, x, y, type="scatter", **kwargs):
+    """Create a diagonal plot"""
+    import matplotlib.pyplot as plt
+
+    x_data = df[x]
+    y_data = df[y]
+
+    vmin = min(x_data.min(), y_data.min())
+    vmax = max(x_data.max(), y_data.max())
+
+    if type == "scatter":
+        plt.plot(x_data, y_data, ".")
+
+    elif type == "hexbin":
+        logcount = kwargs.pop("logcount", True)
+
+        kwargs = {
+            "gridsize": 31,
+            "extent": [vmin, vmax, vmin, vmax],
+            **kwargs,
+        }
+
+        if logcount:
+            kwargs.setdefault("bins", "log")
+            kwargs.setdefault("mincnt", 1)
+
+        plt.hexbin(x_data, y_data, **kwargs)
+        plt.colorbar()
+
+    plt.plot([vmin, vmax], [vmin, vmax], color="r")
+    plt.xlabel(x)
+    plt.ylabel(y)
+    plt.axis("equal")
+
+
 def edges(x):
     """Create edges for use with pcolor.
 
@@ -814,6 +849,18 @@ def find_high_frequency_categories(s, min_frequency=0.02, n_max=None):
 
 
 def as_frame(*args, **kwargs):
+    """Build a dataframe from kwargs or positional args.
+
+    Note, functions can be passed as kwargs. They will be evaluated with the
+    current dataframe and their result assigned to the named column. For
+    example::
+
+        as_frame(
+            x=np.random.uniform(-3, 3, 1_000),
+            y=lambda df: np.random.normal(df["x"], 0.5),
+        )
+
+    """
     import pandas as pd
 
     if args and kwargs:
@@ -955,8 +1002,9 @@ def copy_structure(
     template, obj, sequences=default_sequences, mappings=default_mappings
 ):
     """Arrange ``obj`` into the structure of ``template``.
+
     :param template:
-        the object of which top copy the structure
+        the object of which to copy the structure
     :param obj:
         the object which to arrange into the structure. If it is
         already structured, the template structure and its structure

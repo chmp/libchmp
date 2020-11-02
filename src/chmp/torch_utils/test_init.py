@@ -1,9 +1,19 @@
+import copy
+
 import numpy as np
 import pandas as pd
 import pytest
 import torch
 
-from chmp.torch_utils import t2n, n2t, t2t, n2n, make_mlp
+from chmp.torch_utils import (
+    t2n,
+    n2t,
+    t2t,
+    n2n,
+    make_mlp,
+    ESGradient,
+    update_moving_average,
+)
 
 
 def test_t2n_nested_structure():
@@ -108,3 +118,36 @@ def test_make_mlp():
     make_mlp(5, 5, activation=torch.nn.ReLU)
     make_mlp(5, 5, hidden=(10,), activation=torch.nn.ReLU)
     make_mlp(5, 5, hidden=10, activation=torch.nn.Softplus)
+
+
+def test_esgradient_example():
+    a = torch.nn.Parameter(torch.randn(1, 5))
+    b = torch.nn.Parameter(torch.randn(1, 5))
+
+    optim = torch.optim.SGD([a, b], lr=1.0)
+    grad_fn = ESGradient([a, b])
+
+    optim.zero_grad()
+    grad_fn(lambda: (a * b).sum())
+    optim.step()
+
+
+def test_esgradient_example_different_scales():
+    a = torch.nn.Parameter(torch.randn(1, 5))
+    b = torch.nn.Parameter(torch.randn(1, 5))
+
+    optim = torch.optim.SGD([a, b], lr=1.0)
+    grad_fn = ESGradient([a, b], scale=[0.5, 1.0])
+
+    optim.zero_grad()
+    grad_fn(lambda: (a * b).sum())
+    optim.step()
+
+
+def test_update_moving_average():
+    m = torch.nn.Linear(5, 5)
+
+    m2 = copy.deepcopy(m)
+    m2.requires_grad_(False)
+
+    update_moving_average(0.9, m2.parameters(), m.parameters())

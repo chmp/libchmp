@@ -684,7 +684,13 @@ class AutoGradient:
 
 
 class ESGradient:
-    """Compute the Evolution Strategy gradient
+    """Estimate the gradient of a function using Evolution Strategies
+
+    The gradient will be assigned to the ``grad`` property of the parameters.
+    This way any PyTorch optimizer can be used. As the tensors are manipulated
+    in-place, they must not require gradients. For modules or tensors call
+    ``requires_grad_(False)`` before using ``ESGradient``. The return value will
+    be the mean and std of the loss.
 
     Usage::
 
@@ -696,6 +702,10 @@ class ESGradient:
         grad_fn(lambda: compute_loss(model))
         optimizer.step()
 
+    :param parameters: the parameters as an iterable :param n_samples: the
+        number of samples with which to estimate the gradient :param scale: the
+        scale of the perturbation to use. Can be passed as a list with the same
+        length as parameters to give different scales for each parameter.
     """
 
     def __init__(self, parameters, *, n_samples=50, scale=0.5):
@@ -704,7 +714,7 @@ class ESGradient:
         self.scale = scale
 
     def __call__(self, compute_loss):
-        return add_es_grad(
+        return _add_es_grad(
             self.parameters,
             compute_loss,
             n_samples=self.n_samples,
@@ -712,8 +722,26 @@ class ESGradient:
         )
 
 
-def add_es_grad(params, compute_loss, *, n_samples, scale):
+def _add_es_grad(params, compute_loss, *, n_samples, scale):
     assert n_samples % 2 == 0
+
+    params = list(params)
+
+    if not isinstance(scale, (list, tuple)):
+        scale = [scale] * len(params)
+
+    assert len(params) == len(scale)
+
+    def _step(compute_param):
+        for p, c, s in zip(params, centers, scale):
+            p.copy_(compute_param(p, c, s))
+
+        loss = compute_loss()
+
+        for p, c, s in zip(params, centers, scale):
+            p.grad.add_(loss / (n_samples * s) * (p - c))
+
+        return [torch.as_tensor(loss)]
 
     with torch.no_grad():
         params = [p for p in params]
@@ -727,27 +755,36 @@ def add_es_grad(params, compute_loss, *, n_samples, scale):
 
         for _ in range(n_samples // 2):
             # compute the positive sample
-            for p, c in zip(params, centers):
-                p.copy_(c + scale * torch.randn(c.shape))
-
-            loss = compute_loss()
-            losses += [torch.as_tensor(loss)]
-
-            for p, c in zip(params, centers):
-                p.grad.add_(loss / (n_samples * scale) * (p - c))
+            losses += _step(lambda _, c, s: c + s * torch.randn(c.shape))
 
             # compute the negative sample
-            for p, c in zip(params, centers):
-                p.copy_(c - (p - c))
-
-            loss = compute_loss()
-            losses += [torch.as_tensor(loss)]
-
-            for p, c in zip(params, centers):
-                p.grad.add_(loss / (n_samples * scale) * (p - c))
+            losses += _step(lambda p, c, _: c - (p - c))
 
         for p, c in zip(params, centers):
             p.copy_(c)
 
         losses = torch.stack(losses)
         return torch.mean(losses), torch.std(losses)
+
+
+def update_moving_average(alpha, average, value):
+    """Update iterables of tensors by an exponentially moving average.
+
+    If ``average`` and ``value`` are passed as module parameters, this function
+    can be used to make one module the moving average of the other module::
+
+        target_value_function = copy.copy(value_function)
+        target_value_function.requires_grad_(False)
+
+        # ...
+
+        update_moving_average(
+            0.9,
+            target_value_function.parameters(),
+            value_function.parameters(),
+        )
+
+    """
+    for a, v in zip(average, value):
+        a.mul_(alpha)
+        a.add_((1 - alpha) * v)
