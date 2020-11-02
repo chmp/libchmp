@@ -671,3 +671,83 @@ def kl_divergence__gamma__log_normal(p, q):
         + torch.exp(p.loc + 0.5 * p.scale ** 2) / q.rate
         - 0.5 * (torch.log(p.scale ** 2.0) + 1 + np.log(2 * np.pi))
     )
+
+
+class AutoGradient:
+    def __init__(self):
+        pass
+
+    def __call__(self, compute_loss):
+        loss = compute_loss()
+        loss.backward()
+        return loss, torch.tensor(0.0, device=loss.device)
+
+
+class ESGradient:
+    """Compute the Evolution Strategy gradient
+
+    Usage::
+
+        grad_fn = ESGradient(model.parameters())
+        optimizer = torch.optim.Adam(model.parameters())
+
+        # ...
+        optimizer.zero_grad()
+        grad_fn(lambda: compute_loss(model))
+        optimizer.step()
+
+    """
+
+    def __init__(self, parameters, *, n_samples=50, scale=0.5):
+        self.parameters = list(parameters)
+        self.n_samples = n_samples
+        self.scale = scale
+
+    def __call__(self, compute_loss):
+        return add_es_grad(
+            self.parameters,
+            compute_loss,
+            n_samples=self.n_samples,
+            scale=self.scale,
+        )
+
+
+def add_es_grad(params, compute_loss, *, n_samples, scale):
+    assert n_samples % 2 == 0
+
+    with torch.no_grad():
+        params = [p for p in params]
+        centers = [p.clone() for p in params]
+
+        for p in params:
+            if p.grad is None:
+                p.grad = torch.zeros_like(p)
+
+        losses = []
+
+        for _ in range(n_samples // 2):
+            # compute the positive sample
+            for p, c in zip(params, centers):
+                p.copy_(c + scale * torch.randn(c.shape))
+
+            loss = compute_loss()
+            losses += [torch.as_tensor(loss)]
+
+            for p, c in zip(params, centers):
+                p.grad.add_(loss / (n_samples * scale) * (p - c))
+
+            # compute the negative sample
+            for p, c in zip(params, centers):
+                p.copy_(c - (p - c))
+
+            loss = compute_loss()
+            losses += [torch.as_tensor(loss)]
+
+            for p, c in zip(params, centers):
+                p.grad.add_(loss / (n_samples * scale) * (p - c))
+
+        for p, c in zip(params, centers):
+            p.copy_(c)
+
+        losses = torch.stack(losses)
+        return torch.mean(losses), torch.std(losses)

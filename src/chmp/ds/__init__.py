@@ -592,6 +592,57 @@ def mpl_axis(
         plt.sca(prev_ax)
 
 
+def errorband(data, *, x=None, y, yerr, **kwargs):
+    """Plot erros as a band around a line
+
+    Usage::
+
+        df.pipe(errorband, y="mean", yerr="std")
+
+    """
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    if x is None:
+        xlabel = data.index.name
+        x = np.asarray(data.index)
+
+    else:
+        xlabel = x
+        x = np.asarray(data[x])
+
+    ylabel = y
+    y = np.asarray(data[y])
+    yerr = np.asarray(data[yerr])
+
+    if yerr.ndim == 2 and yerr.shape[1] == 2:
+        yerr_lower, yerr_upper = yerr.T
+
+    else:
+        yerr_lower, yerr_upper = yerr, yerr
+
+    (l,) = plt.plot(x, y, **kwargs)
+
+    alpha = l.get_alpha()
+    if alpha is None:
+        alpha = 1.0
+
+    plt.fill_between(
+        x,
+        y - yerr_lower,
+        y + yerr_upper,
+        alpha=0.5 * alpha,
+        color=l.get_color(),
+        zorder=l.get_zorder() - 1,
+    )
+
+    if xlabel is not None:
+        plt.xlabel(xlabel)
+
+    if ylabel is not None:
+        plt.ylabel(ylabel)
+
+
 def edges(x):
     """Create edges for use with pcolor.
 
