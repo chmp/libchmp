@@ -736,6 +736,41 @@ def index_query(obj, expression, scalar=False):
     return res
 
 
+def select(_df, *args, **kwargs):
+    import pandas as pd
+
+    parts = [
+        _df[[*args]],
+        _df.assign(**kwargs)[[*kwargs]],
+    ]
+    return pd.concat(parts, axis=1)
+
+
+def query(_df, *args, **kwargs):
+    """Filter a dataframe.
+
+    Usage::
+
+        df.pipe(query, lambda df: df["col"] == "foo")
+        df.pipe(query, col="foo", bar="baz")
+
+    """
+    import numpy as np
+
+    sel = True
+    for arg in args:
+        sel = np.logical_and(sel, arg(_df))
+
+    for column, value in kwargs.items():
+        if isinstance(value, tuple):
+            sel = np.logical_and(sel, _df[column].isin(value))
+
+        else:
+            sel = np.logical_and(sel, _df[column] == value)
+
+    return _df[sel]
+
+
 def fix_categories(
     s, categories=None, other_category=None, inplace=False, groups=None, ordered=False
 ):

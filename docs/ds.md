@@ -221,6 +221,19 @@ Execute a query expression on the index and return matching rows.
   entry.
 
 
+### `chmp.ds.query`
+`chmp.ds.query(_df, *args, **kwargs)`
+
+Filter a dataframe.
+
+Usage:
+
+```
+df.pipe(query, lambda df: df["col"] == "foo")
+df.pipe(query, col="foo", bar="baz")
+```
+
+
 ### `chmp.ds.fix_categories`
 `chmp.ds.fix_categories(s, categories=None, other_category=None, inplace=False, groups=None, ordered=False)`
 
