@@ -5,34 +5,32 @@ import sys
 
 self_path = pathlib.Path(__file__).parent.resolve()
 
-
-def cmd():
-    def decorator(func):
-        func.__chmp__ = getattr(func, "__chmp__", {})
-        func.__chmp__["name"] = func.__name__
-        return func
-
-    return decorator
+_mkdec = lambda effect: lambda f: [f, effect(f)][0]
+_props = lambda o: vars(o).setdefault("__chmp__", {})
+cmd = lambda **kw: _mkdec(lambda f: _props(f).update(kw))
+arg = lambda *a, **kw: _mkdec(
+    lambda f: _props(f).setdefault("__args__", []).append((a, kw))
+)
 
 
-@cmd()
+@cmd(help="Perform all important tasks before a commit")
 def precommit():
     format()
     test()
     doc()
 
 
-@cmd()
+@cmd(help="Format the source code")
 def format():
     run(sys.executable, "-m", "black", self_path)
 
 
-@cmd()
+@cmd(help="Run unittests")
 def test():
     run(sys.executable, "-m", "pytest", self_path)
 
 
-@cmd()
+@cmd(help="Update the documentation")
 def doc():
     from chmp.tools.mddocs import transform_directories
 
@@ -61,11 +59,18 @@ def _build_parser():
     subparsers = parser.add_subparsers()
 
     for func in globals().values():
-        if not callable(func) or not hasattr(func, "__chmp__"):
+        if not hasattr(func, "__chmp__"):
             continue
 
-        subparser = subparsers.add_parser(func.__chmp__["name"])
+        desc = dict(func.__chmp__)
+        name = desc.pop("name", func.__name__)
+        args = desc.pop("__args__", [])
+
+        subparser = subparsers.add_parser(name, **desc)
         subparser.set_defaults(__main__=func)
+
+        for arg_args, arg_kwargs in args:
+            subparser.add_argument(*arg_args, **arg_kwargs)
 
     return parser
 
