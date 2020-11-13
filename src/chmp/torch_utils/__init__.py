@@ -340,28 +340,52 @@ def n2n(
     return wrapper
 
 
-def call_torch(func, arg, *args, dtype=None, device=None, batch_size=64):
-    """Call a torch function with numpy arguments and numpy results."""
-    args = (arg, *args)
-    index, values = flatten_with_index(args)
-    result_batches = []
+def batched_n2n(
+    func,
+    dtype=None,
+    returns=None,
+    device=None,
+    sequences=default_sequences,
+    mappings=default_mappings,
+    arrays=default_arrays,
+    tensors=default_tensors,
+    batch_size=64,
+):
+    """Wraper to call a torch function batch-wise with numpy args and results
 
-    for start in it.count(0, batch_size):
-        end = start + batch_size
+    This function behaves similar to :func:`n2n`, but only supports function
+    arguments.
 
-        if start >= len(values[0]):
-            break
+    Usage::
 
-        batch = unflatten(index, (val[start:end] for val in values))
-        batch = n2t(batch, dtype=dtype, device=device)
-        result = func(*batch)
-        result = t2n(result)
+        pred = batched_n2n(model, batch_size=128)(x)
 
-        result_batches.append(result)
+    """
+    n2n_func = n2n(
+        func,
+        dtype=dtype,
+        device=device,
+        sequences=sequences,
+        mappings=mappings,
+        arrays=arrays,
+        tensors=tensors,
+    )
 
-    result, schema = szip(result_batches, return_schema=True)
-    result = smap(lambda _, r: np.concatenate(r, axis=0), schema, result)
-    return result
+    @ft.wraps(func)
+    def wrapper(*args, **kwargs):
+        dl = make_data_loader(
+            NumpyDataset((args, kwargs)), mode="predict", batch_size=batch_size
+        )
+
+        with torch.no_grad():
+            return szip(
+                (n2n_func(*args, **kwargs) for (args, kwargs) in dl),
+                combine=np.concatenate,
+                sequences=default_sequences,
+                mappings=default_mappings,
+            )
+
+    return wrapper
 
 
 def optimizer_step(optimizer, func, *args, **kwargs):
@@ -785,6 +809,7 @@ def update_moving_average(alpha, average, value):
         )
 
     """
-    for a, v in zip(average, value):
-        a.mul_(alpha)
-        a.add_((1 - alpha) * v)
+    with torch.no_grad():
+        for a, v in zip(average, value):
+            a.mul_(alpha)
+            a.add_((1 - alpha) * v)

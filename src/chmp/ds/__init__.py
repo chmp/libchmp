@@ -46,6 +46,18 @@ def reload(*modules_or_module_names: Union[str, ModuleType]) -> Optional[ModuleT
     return mod
 
 
+def reload_from(*paths):
+    for path in paths:
+        with open(path, "rt") as fobj:
+            modules = json.load(fobj)
+
+        for module in modules:
+            if not module:
+                continue
+
+            reload(module)
+
+
 def define(func):
     """Execute a function and return its result.
 
@@ -934,7 +946,7 @@ def szip(
     iterable_of_objects,
     sequences=default_sequences,
     mappings=default_mappings,
-    return_schema=False,
+    combine=list,
 ):
     """Zip but for deeply nested objects.
     For a list of nested set of objects return a nested set of list.
@@ -963,7 +975,13 @@ def szip(
             mappings=mappings,
         )
 
-    return target if return_schema is False else (target, schema)
+    return smap(
+        lambda _, o: combine(o),
+        schema,
+        target,
+        sequences=sequences,
+        mappings=mappings,
+    )
 
 
 def flatten_with_index(obj, sequences=default_sequences, mappings=default_mappings):

@@ -7,7 +7,7 @@ from chmp.torch_utils import (
     masked_softmax,
     linear,
     DiagonalScaleShift,
-    call_torch,
+    batched_n2n,
     t2n,
     NumpyDataset,
 )
@@ -43,12 +43,12 @@ def test_diagonal_scale_shift():
 
 def test_call_torch():
     np.testing.assert_almost_equal(
-        call_torch(torch.sqrt, np.asarray([1, 4, 9], dtype="float")), [1, 2, 3]
+        batched_n2n(lambda x: torch.sqrt(x))(np.asarray([1, 4, 9], dtype="float")),
+        [1, 2, 3],
     )
 
     np.testing.assert_almost_equal(
-        call_torch(
-            torch.add,
+        batched_n2n(lambda a, b: a + b)(
             np.asarray([1, 2, 3], dtype="float"),
             np.asarray([4, 5, 6], dtype="float"),
         ),
@@ -57,8 +57,7 @@ def test_call_torch():
 
 
 def test_call_torch_structured():
-    a, b = call_torch(
-        lambda t: (t[0] + t[1], t[1] - t[0]),
+    a, b = batched_n2n(lambda t: (t[0] + t[1], t[1] - t[0]))(
         (np.asarray([1, 2, 3], dtype="float"), np.asarray([4, 5, 6], dtype="float")),
     )
 
@@ -68,7 +67,9 @@ def test_call_torch_structured():
 
 def test_call_torch_batched():
     np.testing.assert_almost_equal(
-        call_torch(torch.sqrt, np.arange(1024).astype("float"), batch_size=128),
+        batched_n2n(lambda x: torch.sqrt(x), batch_size=128)(
+            np.arange(1024).astype("float")
+        ),
         np.arange(1024) ** 0.5,
     )
 

@@ -311,7 +311,7 @@ be passed to `func`.
 
 
 ### `chmp.ds.szip`
-`chmp.ds.szip(iterable_of_objects, sequences=(<class 'tuple'>,), mappings=(<class 'dict'>,), return_schema=False)`
+`chmp.ds.szip(iterable_of_objects, sequences=(<class 'tuple'>,), mappings=(<class 'dict'>,), combine=<class 'list'>)`
 
 Zip but for deeply nested objects.
 For a list of nested set of objects return a nested set of list.

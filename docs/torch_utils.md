@@ -65,10 +65,19 @@ Equivalent  to `n2t(t2n(func)(*args, **kwargs)`
 Equivalent to `t2n(n2t(func)(*args, **kwargs)`
 
 
-### `chmp.torch_utils.call_torch`
-`chmp.torch_utils.call_torch(func, arg, *args, dtype=None, device=None, batch_size=64)`
+### `chmp.torch_utils.batched_n2n`
+`chmp.torch_utils.batched_n2n(func, dtype=None, returns=None, device=None, sequences=(<class 'tuple'>,), mappings=(<class 'dict'>,), arrays=(<class 'numpy.ndarray'>, <class 'pandas.core.series.Series'>, <class 'pandas.core.frame.DataFrame'>), tensors=(<class 'torch.Tensor'>,), batch_size=64)`
 
-Call a torch function with numpy arguments and numpy results.
+Wraper to call a torch function batch-wise with numpy args and results
+
+This function behaves similar to [n2n](#n2n), but only supports function
+arguments.
+
+Usage:
+
+```
+pred = batched_n2n(model, batch_size=128)(x)
+```
 
 
 ### `chmp.torch_utils.linear`
