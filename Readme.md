@@ -4,7 +4,7 @@
 - [`chmp.parser`](docs/parser.md): helpers to write parsers using functional
   composition
 - `chmp.tools`: various tools
-- [`chmp.torch_util`](docs/torch_utils.md): helpers to write pytorch models
+- [`chmp.torch_utils`](docs/torch_utils.md): helpers to write pytorch models
 
 To install / run tests use:
 
