@@ -643,23 +643,58 @@ def make_data_loader(dataset, mode="fit", **kwargs):
 
 
 class NumpyDataset(torch.utils.data.Dataset):
-    def __init__(self, data, dtype=None):
-        index, data = flatten_with_index(data)
-        data = [np.asarray(v) for v in data]
+    """A PyTorch datast composed out of structured numpy array.
 
-        self.index = index
+    :param data:
+        the (structured) data. Nones are returned as is-is.
+    :param dtype:
+        if given a (structured) dtype to apply to the data
+    :param filter:
+         an optional boolean mask indicating which items are available
+    :param sequences:
+        see ``chmp.ds.smap``
+    :param mappings:
+        see ``chmp.ds.smap``
+    """
+
+    def __init__(
+        self,
+        data,
+        dtype=None,
+        sequences=default_sequences,
+        mappings=default_mappings,
+        filter=None,
+    ):
         self.data = data
-        self.dtype = dtype
+        self.dtype = copy_structure(data, dtype, mappings=mappings, sequences=sequences)
         self.length = self._guess_length()
+        self.sequences = sequences
+        self.mappings = mappings
+
+        if filter is not None:
+            (self.valid_idx,) = np.nonzero(filter)
+
+        else:
+            self.valid_idx = np.arange(self.length)
+
+    def filter(self, func):
+        """Evaluate a filter on the full data set and set the filter of this dataset"""
+        return NumpyDataset(
+            self.data,
+            dtype=self.dtype,
+            sequences=self.sequences,
+            mappings=self.mappings,
+            filter=func(self),
+        )
 
     def _guess_length(self):
         candidates = set()
 
-        for item in self.data:
-            if item is None:
-                continue
+        def _add_len(obj):
+            if obj is not None:
+                candidates.add(len(obj))
 
-            candidates.add(len(item))
+        smap(_add_len, self.data)
 
         if len(candidates) != 1:
             raise ValueError(f"Arrays with different lengths: {candidates}")
@@ -668,17 +703,22 @@ class NumpyDataset(torch.utils.data.Dataset):
         return length
 
     def __len__(self):
-        return self.length
+        return len(self.valid_idx)
 
     def __getitem__(self, idx):
-        res = [(item[idx] if item is not None else None) for item in self.data]
-        if self.dtype is not None:
-            res = [
-                (np.asarray(item, dtype=self.dtype) if item is not None else None)
-                for item in res
-            ]
+        def _get(item, dtype):
+            if item is None:
+                return None
 
-        return unflatten(self.index, res)
+            return np.asarray(item[self.valid_idx[idx]], dtype=dtype)
+
+        return smap(
+            _get,
+            self.data,
+            self.dtype,
+            sequences=self.sequences,
+            mappings=self.mappings,
+        )
 
 
 @register_unknown_kl(torch.distributions.LogNormal, torch.distributions.Gamma)

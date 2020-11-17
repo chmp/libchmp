@@ -155,6 +155,31 @@ g, = torch.autograd.grad(iv(a), a, torch.ones_like(a))
 ```
 
 
+### `chmp.torch_utils.NumpyDataset`
+`chmp.torch_utils.NumpyDataset(data, dtype=None, sequences=(<class 'tuple'>,), mappings=(<class 'dict'>,), filter=None)`
+
+A PyTorch datast composed out of structured numpy array.
+
+#### Parameters
+
+* **data** (*any*):
+  the (structured) data. Nones are returned as is-is.
+* **dtype** (*any*):
+  if given a (structured) dtype to apply to the data
+* **filter** (*any*):
+  an optional boolean mask indicating which items are available
+* **sequences** (*any*):
+  see `chmp.ds.smap`
+* **mappings** (*any*):
+  see `chmp.ds.smap`
+
+
+#### `chmp.torch_utils.NumpyDataset.filter`
+`chmp.torch_utils.NumpyDataset.filter(func)`
+
+Evaluate a filter on the full data set and set the filter of this dataset
+
+
 ### `chmp.torch_utils.kl_divergence__gamma__log_normal`
 `chmp.torch_utils.kl_divergence__gamma__log_normal(p, q)`
 

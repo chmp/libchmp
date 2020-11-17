@@ -24,8 +24,15 @@ def format():
 
 
 @cmd(help="Run unittests")
-def test():
-    run(sys.executable, "-m", "pytest", self_path)
+@arg("--pdb", action="store_true", default=False)
+def test(pdb=False):
+    run(
+        sys.executable,
+        "-m",
+        "pytest",
+        self_path,
+        *(["--pdb"] if pdb else []),
+    )
 
 
 @cmd(help="Update the documentation")

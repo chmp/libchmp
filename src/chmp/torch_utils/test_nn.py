@@ -80,6 +80,33 @@ def test_t2n_examples():
 
 
 def test_numpy_dataset():
-    ds = NumpyDataset(pd.DataFrame({"a": np.zeros(10), "b": np.zeros(10)}))
+    ds = NumpyDataset({"a": np.arange(10), "b": 2 * np.arange(10)})
     assert len(ds) == 10
-    ds[0]
+    assert ds[5] == {"a": 5, "b": 10}
+
+
+def test_numpy_dataset_dtype():
+    ds = NumpyDataset({"a": np.arange(10), "b": 2 * np.arange(10)}, dtype="float32")
+    assert len(ds) == 10
+    assert ds[3] == {"a": 3.0, "b": 6.0}
+
+
+def test_numpy_dataset_nones():
+    ds = NumpyDataset((np.arange(10), None), dtype=(("float32", "float32")))
+    assert len(ds) == 10
+    assert ds[7] == (7.0, None)
+
+
+def test_numpy_dataset_filter():
+    ds = NumpyDataset(np.arange(10), dtype="int64")
+    assert len(ds) == 10
+
+    ds = ds.filter(lambda ds: ds.data % 2 == 0)
+
+    assert len(ds) == 5
+
+    assert ds[0] == 0
+    assert ds[1] == 2
+    assert ds[2] == 4
+    assert ds[3] == 6
+    assert ds[4] == 8

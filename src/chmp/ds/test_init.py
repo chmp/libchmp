@@ -33,6 +33,9 @@ def test_timed():
     with timed("label"):
         assert True is True
 
+    with timed() as timer:
+        assert isinstance(timer(0.5), float)
+
 
 def test_piecewise_linear():
     assert piecewise_linear([0, 1, 2], [1, 2, 3], -0.1) == pytest.approx(1.0)

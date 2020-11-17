@@ -1099,20 +1099,28 @@ def json_numpy_default(obj):
     """A default implementation for ``json.dump`` that deals with numpy datatypes."""
     import numpy as np
 
-    int_types = (
-        np.int0,
-        np.int8,
-        np.int16,
-        np.int32,
-        np.int64,
-        np.uint0,
-        np.uint8,
-        np.uint16,
-        np.uint32,
-        np.uint64,
+    int_types = tuple(
+        getattr(np, dt)
+        for dt in (
+            "int0",
+            "int8",
+            "int16",
+            "int32",
+            "int64",
+            "uint0",
+            "uint8",
+            "uint16",
+            "uint32",
+            "uint64",
+        )
+        if hasattr(np, dt)
     )
 
-    float_types = (np.float16, np.float32, np.float64, np.float128)
+    float_types = tuple(
+        getattr(np, dt)
+        for dt in ("float16", "float32", "float64", "float128")
+        if hasattr(np, dt)
+    )
 
     if isinstance(obj, int_types):
         return int(obj)
@@ -1175,6 +1183,11 @@ def timed(tag=None, level=logging.INFO):
         with timed():
             long_running_operation()
 
+    The returned result can be used to estimate the remaining runtime::
+
+        with timed() as timer:
+            timer(0.5)
+
     :param any tag:
         an object used to identify the timed code block. It is printed with
         the time taken.
@@ -1192,13 +1205,18 @@ class _TimedContext(object):
         self.logger = logger
         self.message = message
         self.level = level
+        self.start = None
 
     def __enter__(self):
         self.start = time.time()
+        return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         end = time.time()
         self.logger.log(self.level, self.message, end - self.start)
+
+    def __call__(self, u):
+        return float(time.time() - self.start / min(max(u, 0.001), 1))
 
 
 def _get_caller_logger(depth=2):
@@ -1211,6 +1229,11 @@ def _get_caller_logger(depth=2):
     frame = stack[depth][0]
     name = frame.f_globals.get("__name__")
     return logging.getLogger(name)
+
+
+def print_status(message: str, width=120, clear=True):
+    """Helper to print a status message in a loop"""
+    print(message.ljust(width)[:width], end="\r" if clear else "\n")
 
 
 def find_categorical_columns(df):

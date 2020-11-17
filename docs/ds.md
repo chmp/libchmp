@@ -357,11 +357,24 @@ with timed():
     long_running_operation()
 ```
 
+The returned result can be used to estimate the remaining runtime:
+
+```
+with timed() as timer:
+    timer(0.5)
+```
+
 #### Parameters
 
 * **tag** (*any*):
   an object used to identify the timed code block. It is printed with
   the time taken.
+
+
+### `chmp.ds.print_status`
+`chmp.ds.print_status(message, width=120, clear=True)`
+
+Helper to print a status message in a loop
 
 
 ### `chmp.ds.find_categorical_columns`
