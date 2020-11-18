@@ -190,7 +190,7 @@ https://arxiv.org/abs/1705.08665
 
 
 ### `chmp.torch_utils.ESGradient`
-`chmp.torch_utils.ESGradient(parameters, *, n_samples=50, scale=0.5)`
+`chmp.torch_utils.ESGradient(parameters, *, n_samples=50, scale=0.1)`
 
 Estimate the gradient of a function using Evolution Strategies
 

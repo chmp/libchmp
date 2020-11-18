@@ -772,7 +772,7 @@ class ESGradient:
         length as parameters to give different scales for each parameter.
     """
 
-    def __init__(self, parameters, *, n_samples=50, scale=0.5):
+    def __init__(self, parameters, *, n_samples=50, scale=0.1):
         self.parameters = list(parameters)
         self.n_samples = n_samples
         self.scale = scale
