@@ -5,6 +5,7 @@ import pytest
 
 from chmp.ds import (
     Object,
+    PrettySeconds,
     timed,
     piecewise_linear,
     piecewise_logarithmic,
@@ -34,7 +35,7 @@ def test_timed():
         assert True is True
 
     with timed() as timer:
-        assert isinstance(timer(0.5), float)
+        assert isinstance(timer(0.5), PrettySeconds)
 
 
 def test_piecewise_linear():

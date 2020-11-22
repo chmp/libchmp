@@ -372,9 +372,13 @@ with timed() as timer:
 
 
 ### `chmp.ds.print_status`
-`chmp.ds.print_status(message, width=120, clear=True)`
+`chmp.ds.print_status(*items, width=120, clear=True)`
 
-Helper to print a status message in a loop
+Helper to print a status message in a loop.
+
+The messages are only printed every 500 ms to not create undue load. Each
+item can also be callable without an argument. In that case, the item is
+first executed and then printed.
 
 
 ### `chmp.ds.find_categorical_columns`

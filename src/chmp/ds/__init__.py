@@ -1200,7 +1200,7 @@ def timed(tag=None, level=logging.INFO):
 
 
 # use a custom contextmanager to control stack level for _get_caller_logger
-class _TimedContext(object):
+class _TimedContext:
     def __init__(self, logger, message, level):
         self.logger = logger
         self.message = message
@@ -1216,7 +1216,70 @@ class _TimedContext(object):
         self.logger.log(self.level, self.message, end - self.start)
 
     def __call__(self, u):
-        return float(time.time() - self.start / min(max(u, 0.001), 1))
+        u = min(max(u, 0.001), 1)
+        res = (time.time() - self.start) * (1 - u) / u
+        return PrettySeconds(res)
+
+
+class PrettySeconds:
+    def __init__(self, seconds):
+        self.seconds = seconds
+
+    def __float__(self):
+        return self.seconds
+
+    def __str__(self):
+        return format(self)
+
+    def __format__(self, format_spec):
+        sign = "" if self.seconds > -1e-5 else "-"
+        time_delta = abs(self.seconds)
+
+        d = dict(
+            weeks=int(time_delta // (7 * 24 * 60 * 60)),
+            days=int(time_delta % (7 * 24 * 60 * 60) // (24 * 60 * 60)),
+            hours=int(time_delta % (24 * 60 * 60) // (60 * 60)),
+            minutes=int(time_delta % (60 * 60) // 60),
+            seconds=time_delta % 60,
+            sign=sign,
+        )
+
+        if d["weeks"] > 0:
+            return "{sign}{weeks}w {days}d".format(**d)
+
+        elif d["days"] > 0:
+            return "{sign}{days}d {hours}h".format(**d)
+
+        elif d["hours"] > 0:
+            return "{sign}{hours}h {minutes}m".format(**d)
+
+        elif d["minutes"] > 0:
+            return "{sign}{minutes}m {seconds:.0f}s".format(**d)
+
+        else:
+            return "{sign}{seconds:.1f}s".format(**d)
+
+
+class Debouncer:
+    def __init__(self, interval, *, now=time.time):
+        self.last_invocation = 0
+        self.interval = interval
+        self.now = now
+
+    def should_run(self, now=None):
+        if self.interval is False:
+            return True
+
+        if now is None:
+            now = self.now()
+
+        return now > self.last_invocation + self.interval
+
+    def invoked(self, now=None):
+        if now is None:
+            now = self.now()
+
+        self.last_invocation = now
 
 
 def _get_caller_logger(depth=2):
@@ -1231,9 +1294,24 @@ def _get_caller_logger(depth=2):
     return logging.getLogger(name)
 
 
-def print_status(message: str, width=120, clear=True):
-    """Helper to print a status message in a loop"""
+def print_status(*items, width=120, clear=True):
+    """Helper to print a status message in a loop.
+
+    The messages are only printed every 500 ms to not create undue load. Each
+    item can also be callable without an argument. In that case, the item is
+    first executed and then printed.
+    """
+    if not print_status._debouncer.should_run():
+        return
+
+    message = " ".join(
+        str(item) if not callable(item) else str(item()) for item in items
+    )
     print(message.ljust(width)[:width], end="\r" if clear else "\n")
+    print_status._debouncer.invoked()
+
+
+print_status._debouncer = Debouncer(0.5)
 
 
 def find_categorical_columns(df):
