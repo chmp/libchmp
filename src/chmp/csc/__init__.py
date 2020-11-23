@@ -79,6 +79,11 @@ class CellScript:
         parsed_cells = self._parse_script()
         return [cell_name for cell_name, _ in parsed_cells]
 
+    def get(self, cell: Union[int, str]) -> str:
+        parsed_cells = self._parse_script()
+        source = self._find_cell(parsed_cells, cell)
+        return source.splitlines()
+
     def eval(self, expr):
         return eval(expr.strip(), vars(self.ns), vars(self.ns))
 
