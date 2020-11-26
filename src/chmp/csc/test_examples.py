@@ -1,4 +1,5 @@
 import argparse
+import inspect
 import pathlib
 
 import pytest
@@ -65,3 +66,28 @@ bar = 21
 
 #{marker} baz
 baz = 2 * bar"""
+
+
+def test_getsource(tmpdir):
+    func = "def foo():\n    return 42\n"
+
+    path = pathlib.Path(tmpdir) / "example.py"
+    path.write_text(getsource_script.format(func=func))
+
+    example = CellScript(path, cell_marker="%", verbose=False)
+    example.run("Cell1")
+
+    actual = inspect.getsource(example.ns.foo)
+    assert actual == func
+
+
+getsource_script = """
+
+#% Cell1
+a = 13
+
+{func}
+
+#% Cell2
+b = a + 2
+"""

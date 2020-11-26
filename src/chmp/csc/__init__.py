@@ -76,13 +76,17 @@ class CellScript:
         self._export()
 
     def list(self) -> List[Optional[str]]:
-        parsed_cells = self._parse_script()
-        return [cell_name for cell_name, _ in parsed_cells]
+        return [cell.name for cell in self._parse_script()]
 
-    def get(self, cell: Union[int, str]) -> str:
-        parsed_cells = self._parse_script()
-        source = self._find_cell(parsed_cells, cell)
-        return source.splitlines()
+    def get(self, cell: Union[int, str]) -> List[str]:
+        cell = self._find_cell(self._parse_script(), cell)
+        return cell.source.splitlines()
+
+    def load(self, cell: Union[int, str]):
+        from IPython import get_ipython
+
+        source = self.get(cell)
+        get_ipython().set_next_input("\n".join(source), replace=True)
 
     def eval(self, expr):
         return eval(expr.strip(), vars(self.ns), vars(self.ns))
@@ -108,41 +112,30 @@ class CellScript:
             return parse_script(fobj, self.cell_pattern)
 
     def _run(self, parsed_cells: List[Tuple[str, str]], cell: Union[int, str]):
-        cell_source = self._find_cell(parsed_cells, cell)
+        cell = self._find_cell(parsed_cells, cell)
 
         if self.verbose:
-            self._print_cell(cell_source)
+            self._print_cell(cell.source)
 
-        exec(cell_source, vars(self.ns), vars(self.ns))
+        # include leading new-lines to ensure the line offset of the source
+        # matches the file
+        source = "\n" * cell.range[0] + cell.source
 
-    def _find_cell(
-        self, parsed_cells: List[Tuple[str, str]], cell: Union[int, str]
-    ) -> str:
-        if isinstance(cell, str):
-            cell = cell.strip()
-            cands = [
-                (cell_name, cell_source)
-                for cell_name, cell_source in parsed_cells
-                if cell_name is not None and cell_name.startswith(cell)
-            ]
+        code = compile(source, str(self.path.resolve()), "exec")
+        exec(code, vars(self.ns), vars(self.ns))
 
-        else:
-            cands = [
-                (cell_name, cell_source)
-                for idx, (cell_name, cell_source) in enumerate(parsed_cells)
-                if idx == cell
-            ]
+    def _find_cell(self, parsed_cells, cell):
+        cands = [c for c in parsed_cells if c.matches(cell)]
 
         if len(cands) == 0:
             raise ValueError("Could not find cell")
 
         elif len(cands) > 1:
             raise ValueError(
-                f"Found multiple cells: {', '.join(str(cn) for cn, _ in cands)}"
+                f"Found multiple cells: {', '.join(str(c.name) for c in cands)}"
             )
 
-        ((_, cell_source),) = cands
-        return cell_source
+        return cands[0]
 
     def _export(self):
         for target, source in self.exports.items():
@@ -168,8 +161,9 @@ def parse_script(fobj, cell_pattern):
     cells = []
     current_cell_name = None
     current_cell_lines = []
+    current_cell_start = 0
 
-    for line in fobj:
+    for idx, line in enumerate(fobj):
         m = cell_pattern.match(line)
 
         if m is None:
@@ -177,12 +171,41 @@ def parse_script(fobj, cell_pattern):
 
         else:
             if current_cell_name is not None or current_cell_lines:
-                cells.append((current_cell_name, "".join(current_cell_lines)))
+                cell = Cell(
+                    current_cell_name,
+                    len(cells),
+                    (current_cell_start, idx + 1),
+                    "".join(current_cell_lines),
+                )
+                cells.append(cell)
 
+            current_cell_start = idx + 1
             current_cell_name = m.group(1).strip()
             current_cell_lines = []
 
+    # NOTE if current_cell_name is not None or there are lines then idx is defined
     if current_cell_name is not None or current_cell_lines:
-        cells.append((current_cell_name, "".join(current_cell_lines)))
+        cell = Cell(
+            current_cell_name,
+            len(cells),
+            (current_cell_start, idx + 1),
+            "".join(current_cell_lines),
+        )
+        cells.append(cell)
 
     return cells
+
+
+class Cell:
+    def __init__(self, name, idx, range, source):
+        self.name = name
+        self.idx = idx
+        self.range = range
+        self.source = source
+
+    def matches(self, cell):
+        if isinstance(cell, str):
+            return self.name is not None and self.name.startswith(cell.strip())
+
+        else:
+            return self.idx == cell
