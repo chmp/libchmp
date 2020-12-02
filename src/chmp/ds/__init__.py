@@ -246,17 +246,15 @@ class undefined_meta(type):
 
 
 class undefined(metaclass=undefined_meta):
-    """Sentinel class"""
+    """A sentinel to mark undefined argument values."""
 
-    pass
+    def __init__(self):
+        pass
 
 
 def first(iterable, default=undefined):
     """Return the first item of an iterable"""
-    for item in iterable:
-        return item
-
-    return default
+    nth(iterable, 0, default=default)
 
 
 def last(iterable, default=undefined):
@@ -269,6 +267,7 @@ def last(iterable, default=undefined):
 
 
 def nth(iterable, n, default=undefined):
+    """Return the nth value in an iterable."""
     for i, item in enumerate(iterable):
         if i == n:
             return item
@@ -277,6 +276,7 @@ def nth(iterable, n, default=undefined):
 
 
 def collect(iterable):
+    """Collect an iterable of ``key, value`` pairs into a dict of lists."""
     result = {}
     for k, v in iterable:
         result.setdefault(k, []).append(v)
@@ -1391,6 +1391,12 @@ def expand(low, high, change=0.05):
 
 
 def magic_open(p, mode, *, compression=None, atomic=False):
+    """Open compressed and  uncompressed files with a unified interface.
+
+    :param compression:
+        the compression desired. If not given it will be autodetected from the
+        filename.
+    """
     # return file-like objects unchanged
     if not isinstance(p, (pathlib.Path, str)):
         return p

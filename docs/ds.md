@@ -75,11 +75,9 @@ A range of dates.
 
 
 ### `chmp.ds.undefined`
-`chmp.ds.undefined(*args, **kwargs)`
+`chmp.ds.undefined()`
 
-Sentinel class
-
-Initialize self.  See help(type(self)) for accurate signature.
+A sentinel to mark undefined argument values.
 
 
 ### `chmp.ds.first`
@@ -92,6 +90,18 @@ Return the first item of an iterable
 `chmp.ds.last(iterable, default=<undefined>)`
 
 Return the last item of an iterable
+
+
+### `chmp.ds.nth`
+`chmp.ds.nth(iterable, n, default=<undefined>)`
+
+Return the nth value in an iterable.
+
+
+### `chmp.ds.collect`
+`chmp.ds.collect(iterable)`
+
+Collect an iterable of `key, value` pairs into a dict of lists.
 
 
 ### `chmp.ds.cell`
@@ -402,6 +412,18 @@ first executed and then printed.
 `chmp.ds.find_categorical_columns(df)`
 
 Find all categorical columns in the given dataframe.
+
+
+### `chmp.ds.magic_open`
+`chmp.ds.magic_open(p, mode, *, compression=None, atomic=False)`
+
+Open compressed and  uncompressed files with a unified interface.
+
+#### Parameters
+
+* **compression** (*any*):
+  the compression desired. If not given it will be autodetected from the
+  filename.
 
 
 ### `chmp.ds.clear_tqdm`
