@@ -16,7 +16,7 @@ notebooks.
 
 Usage:
 
-```
+```python
 @define
 def foo():
     return 42
@@ -43,7 +43,7 @@ Similar to `define`, but cache to a file.
 
 Usage:
 
-```
+```python
 @cached('./cache/result')
 def dataset():
     ...
@@ -52,7 +52,7 @@ def dataset():
 
 or:
 
-```
+```python
 @cached('./cache/result', validate=True)
 def model(result=None):
     if result is not None:
@@ -118,7 +118,7 @@ Given an iterable, yield `(color, item)` pairs.
   This procedure allows for example to colormap a pandas Dataframe
   grouped on a number column:
   
-  ```
+  ```python
   for c, (_, g) in colorize(df.groupby("g"), cmap="viridis"):
       ...
   ```
@@ -137,7 +137,7 @@ Return the matplotlib color cycle.
 
 Usage:
 
-```
+```python
 blue, green, red = get_color_cycle(3)
 ```
 
@@ -165,7 +165,7 @@ Plot erros as a band around a line
 
 Usage:
 
-```
+```python
 df.pipe(errorband, y="mean", yerr="std")
 ```
 
@@ -183,7 +183,7 @@ Create edges for use with pcolor.
 
 Usage:
 
-```
+```python
 assert x.size == v.shape[1]
 assert y.size == v.shape[0]
 pcolor(edges(x), edges(y), v)
@@ -203,7 +203,7 @@ Add a text in axes coordinates (similar `figtext`).
 
 Usage:
 
-```
+```python
 axtext(0, 0, 'text')
 ```
 
@@ -228,7 +228,7 @@ Filter a dataframe.
 
 Usage:
 
-```
+```python
 df.pipe(query, lambda df: df["col"] == "foo")
 df.pipe(query, col="foo", bar="baz")
 ```
@@ -286,7 +286,7 @@ Note, functions can be passed as kwargs. They will be evaluated with the
 current dataframe and their result assigned to the named column. For
 example:
 
-```
+```python
 as_frame(
     x=np.random.uniform(-3, 3, 1_000),
     y=lambda df: np.random.normal(df["x"], 0.5),
@@ -352,14 +352,14 @@ Time a codeblock and log the result.
 
 Usage:
 
-```
+```python
 with timed():
     long_running_operation()
 ```
 
 The returned result can be used to estimate the remaining runtime:
 
-```
+```python
 with timed() as timer:
     timer(0.5)
 ```

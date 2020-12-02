@@ -28,7 +28,7 @@ with `optimized``are returned as parameters. When arg is not one of
 
 Usage:
 
-```
+```python
 class MyModule(torch.nn.Module):
     def __init__(self, a, b):
         super().__init__()
@@ -75,7 +75,7 @@ arguments.
 
 Usage:
 
-```
+```python
 pred = batched_n2n(model, batch_size=128)(x)
 ```
 
@@ -141,7 +141,7 @@ Helper to define a lookup function incl. its gradient.
 
 Usage:
 
-```
+```python
 import scipy.special
 
 x = np.linspace(0, 10, 100).astype('float32')
@@ -202,7 +202,7 @@ be the mean and std of the loss.
 
 Usage:
 
-```
+```python
 grad_fn = ESGradient(model.parameters())
 optimizer = torch.optim.Adam(model.parameters())
 
@@ -229,7 +229,7 @@ Update iterables of tensors by an exponentially moving average.
 If `average` and `value` are passed as module parameters, this function
 can be used to make one module the moving average of the other module:
 
-```
+```python
 target_value_function = copy.copy(value_function)
 target_value_function.requires_grad_(False)
 
