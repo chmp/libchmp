@@ -1175,6 +1175,38 @@ def pd_has_ordered_assign():
     return (py_major, py_minor) >= (3, 6) and (pd_major, pd_minor) >= (0, 23)
 
 
+@contextlib.contextmanager
+def patch(obj, **assignments):
+    """Monkey patch an object.
+
+    Usage::
+
+        import sys
+        with patch(sys, argv=["dummy.py", "foo", "bar]):
+            args = parser.parse_args()
+
+    After the block, the original values will be restored. Note: If an
+    attribute was previously not defined, it will be deleted after the block.
+    """
+    prev_values = [
+        (attr, hasattr(obj, attr), getattr(obj, attr, None)) for attr in assignments
+    ]
+
+    try:
+        for attr, value in assignments.items():
+            setattr(obj, attr, value)
+
+        yield
+
+    finally:
+        for attr, had_value, prev_value in prev_values:
+            if had_value:
+                setattr(obj, attr, prev_value)
+
+            else:
+                delattr(obj, attr)
+
+
 def timed(tag=None, level=logging.INFO):
     """Time a codeblock and log the result.
 

@@ -1,4 +1,6 @@
+import argparse
 import json
+import sys
 
 import numpy as np
 import pytest
@@ -7,6 +9,7 @@ from chmp.ds import (
     Object,
     PrettySeconds,
     timed,
+    patch,
     piecewise_linear,
     piecewise_logarithmic,
     szip,
@@ -108,3 +111,15 @@ def test_json_nump_default__roundtrip(value):
 
     assert np.shape(actual) == np.shape(value)
     np.testing.assert_allclose(actual, value)
+
+
+def test_patch():
+    _parser = argparse.ArgumentParser()
+    _parser.add_argument("first")
+    _parser.add_argument("second")
+
+    with patch(sys, argv=["dummy.py", "foo", "bar"]):
+        args = _parser.parse_args()
+
+    assert args.first == "foo"
+    assert args.second == "bar"

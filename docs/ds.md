@@ -345,6 +345,23 @@ Arrange `obj` into the structure of `template`.
 A default implementation for `json.dump` that deals with numpy datatypes.
 
 
+### `chmp.ds.patch`
+`chmp.ds.patch(*args, **kwds)`
+
+Monkey patch an object.
+
+Usage:
+
+```python
+import sys
+with patch(sys, argv=["dummy.py", "foo", "bar]):
+    args = parser.parse_args()
+```
+
+After the block, the original values will be restored. Note: If an
+attribute was previously not defined, it will be deleted after the block.
+
+
 ### `chmp.ds.timed`
 `chmp.ds.timed(tag=None, level=20)`
 
