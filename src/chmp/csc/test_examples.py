@@ -27,9 +27,31 @@ def test_example(tmpdir):
     assert example.ns.baz == 42
 
     # inject values at start
-    example.run("baz", bar=23)
+    example.assign(bar=23)
+    example.run("baz")
     assert example.ns.bar == 23
     assert example.ns.baz == 46
+
+    example.exec(
+        """
+        bar = 11
+    """
+    )
+    example.run("baz")
+    assert example.ns.bar == 11
+    assert example.ns.baz == 22
+
+    assert example.eval("2 * bar") == 22
+    assert (
+        example.eval(
+            """
+        2 
+        * 
+        bar
+    """
+        )
+        == 22
+    )
 
 
 def test_different_marker(tmpdir):
