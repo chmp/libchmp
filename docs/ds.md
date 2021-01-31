@@ -181,7 +181,7 @@ df.pipe(errorband, y="mean", yerr="std")
 
 
 ### `chmp.ds.diagonal`
-`chmp.ds.diagonal(df, x, y, type='scatter', **kwargs)`
+`chmp.ds.diagonal(df=None, *, x, y, type='scatter', ax=None, **kwargs)`
 
 Create a diagonal plot
 
@@ -370,6 +370,19 @@ with patch(sys, argv=["dummy.py", "foo", "bar]):
 
 After the block, the original values will be restored. Note: If an
 attribute was previously not defined, it will be deleted after the block.
+
+
+### `chmp.ds.groupby`
+`chmp.ds.groupby(a)`
+
+Group a numpy array.
+
+Usage:
+
+```python
+for idx in grouped(arr):
+    ...
+```
 
 
 ### `chmp.ds.timed`

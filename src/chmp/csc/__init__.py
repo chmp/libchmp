@@ -56,7 +56,7 @@ After exports are declared, the variables are copied from the script namespace
 into the export namespace after each call to ``run``.
 
 """
-import json
+import enum
 import pathlib
 import re
 import sys
@@ -285,16 +285,12 @@ class CellScript:
             setattr(self.export_ns, target, getattr(self.ns, source))
 
     def _print_cell(self, cell_source):
-        lines = ["  " + line for line in cell_source.strip().splitlines()]
+        lines = ["> " + line for line in cell_source.strip().splitlines()]
 
-        if len(lines) < 19:
-            print("\n".join(lines), file=sys.stderr)
+        if len(lines) > 10:
+            lines = lines[:9] + ["..."]
 
-        else:
-            print(
-                "\n".join(lines[:8] + ["", "[...]", ""] + lines[-8:]),
-                file=sys.stderr,
-            )
+        print("\n".join(lines), file=sys.stderr)
 
 
 def parse_script(fobj, cell_pattern):
@@ -334,6 +330,46 @@ def parse_script(fobj, cell_pattern):
         cells.append(cell)
 
     return cells
+
+
+def update_script(path, name, source, *, cell_pattern, cell_marker):
+    """Update a cell script"""
+    state = UpdateState.wait
+
+    with open(path, "rt") as fobj:
+        lines = list(fobj)
+
+    with open(path, "wt") as fobj:
+        for line in lines:
+            m = cell_pattern.match(line)
+            current_name = m.group(1).strip() if m is not None else None
+
+            if state is UpdateState.wait:
+                if name == current_name:
+                    state = UpdateState.wait_next_cell
+                    fobj.write(line)
+                    fobj.write(source)
+
+                else:
+                    fobj.write(line)
+
+            elif state is UpdateState.wait_next_cell:
+                if current_name is not None:
+                    fobj.write(line)
+                    state = UpdateState.done
+
+            elif state is UpdateState.done:
+                fobj.write(line)
+
+        if state is UpdateState.wait:
+            fobj.write(f"#{cell_marker} {name}\n")
+            fobj.write(source)
+
+
+class UpdateState(int, enum.Enum):
+    wait = enum.auto()
+    wait_next_cell = enum.auto()
+    done = enum.auto()
 
 
 class Cell:
