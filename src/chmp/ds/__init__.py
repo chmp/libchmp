@@ -655,15 +655,27 @@ def errorband(data, *, x=None, y, yerr, **kwargs):
         plt.ylabel(ylabel)
 
 
-def diagonal(df, x, y, type="scatter", **kwargs):
+def diagonal(df=None, *, x, y, type="scatter", ax=None, **kwargs):
     """Create a diagonal plot"""
     import matplotlib.pyplot as plt
 
-    x_data = df[x]
-    y_data = df[y]
+    if df is not None:
+        x_data = df[x]
+        y_data = df[y]
 
-    vmin = min(x_data.min(), y_data.min())
-    vmax = max(x_data.max(), y_data.max())
+    else:
+        x_data = x
+        y_data = y
+        x = "x"
+        y = "y"
+
+    if ax is None:
+        ax = plt.gca()
+
+    vmin = max(x_data.min(), y_data.min())
+    vmax = min(x_data.max(), y_data.max())
+
+    plt.sca(ax)
 
     if type == "scatter":
         plt.plot(x_data, y_data, ".")
@@ -1205,6 +1217,57 @@ def patch(obj, **assignments):
 
             else:
                 delattr(obj, attr)
+
+
+def groupby(a):
+    """Group a numpy array.
+
+    Usage::
+
+        for idx in grouped(arr):
+            ...
+
+    """
+    starts, ends, indices = _groupby(a)
+    return Grouped(
+        starts=starts,
+        ends=ends,
+        indices=indices,
+    )
+
+
+class Grouped:
+    def __init__(self, starts, ends, indices):
+        self.starts = starts
+        self.ends = ends
+        self.indices = indices
+
+    def __iter__(self):
+        for i in range(len(self.starts)):
+            yield self.indices[self.starts[i] : self.ends[i]]
+
+
+def _groupby(a):
+    import numpy as np
+
+    offset = 0
+    starts = []
+    ends = []
+    indices = np.empty(len(a), dtype="uint64")
+
+    for v in np.unique(a):
+        (idx,) = np.nonzero(a == v)
+
+        indices[offset : offset + len(idx)] = idx
+        starts += [offset]
+        ends += [offset + len(idx)]
+
+        offset += len(idx)
+
+    starts = np.asarray(starts, dtype="uint64")
+    ends = np.asarray(ends, dtype="uint64")
+
+    return starts, ends, indices
 
 
 def timed(tag=None, level=logging.INFO):
