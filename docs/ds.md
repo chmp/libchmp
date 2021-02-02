@@ -185,6 +185,11 @@ df.pipe(errorband, y="mean", yerr="std")
 
 Create a diagonal plot
 
+#### Parameters
+
+* **type** (*any*):
+  the type to plot. Possible type "scatter", "hexbin".
+
 
 ### `chmp.ds.edges`
 `chmp.ds.edges(x)`

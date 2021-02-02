@@ -656,7 +656,11 @@ def errorband(data, *, x=None, y, yerr, **kwargs):
 
 
 def diagonal(df=None, *, x, y, type="scatter", ax=None, **kwargs):
-    """Create a diagonal plot"""
+    """Create a diagonal plot
+
+    :param type:
+        the type to plot. Possible type "scatter", "hexbin".
+    """
     import matplotlib.pyplot as plt
 
     if df is not None:

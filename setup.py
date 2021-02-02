@@ -3,7 +3,7 @@ from setuptools import setup, PEP420PackageFinder
 
 setup(
     name="chmp",
-    version="20.11",
+    version="21.2.0",
     description="Support code for machine learning / data science experiments",
     author="Christopher Prohm",
     long_description=open("Readme.pypi.md").read(),
