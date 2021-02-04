@@ -416,14 +416,24 @@ with timed() as timer:
   the time taken.
 
 
-### `chmp.ds.print_status`
-`chmp.ds.print_status(*items, width=120, clear=True)`
+### `chmp.ds.status`
+`chmp.ds.status(**items)`
 
-Helper to print a status message in a loop.
+Print (and update) a status line
 
-The messages are only printed every 500 ms to not create undue load. Each
-item can also be callable without an argument. In that case, the item is
-first executed and then printed.
+Usage:
+
+```python
+status(epoch=epoch, loss=("{:.2f}", loss), complex=callable)
+```
+
+The print call is debounced to only execute only twice per second and to
+take up at most 120 characters. To change these settings use the config
+function:
+
+```python
+status.config(width=80, interval=2)
+```
 
 
 ### `chmp.ds.find_categorical_columns`

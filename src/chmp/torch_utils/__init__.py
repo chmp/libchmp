@@ -388,25 +388,50 @@ def batched_n2n(
     return wrapper
 
 
-def optimizer_step(optimizer, func, *args, **kwargs):
-    optimizer.zero_grad()
-    loss = func(*args, **kwargs)
+def optimizer_step(optimizer, func=None, *args, **kwargs):
+    """Call the optimizer
 
-    if isinstance(loss, tuple):
-        loss[0].backward()
+    This function can be used directly, as in::
 
-    elif isinstance(loss, dict):
-        loss["loss"].backward()
+        loss = optimizer_step(optimizer, evaluate_loss)
 
-    else:
-        loss.backward()
+    or as a decorator::
 
-    optimizer.step()
+        @optimizer_step(optimizer)
+        def loss():
+            return evaluate_loss()
 
-    return smap(float, loss)
+    The `loss` returned by `evaluate_loss` can be scalar loss, a tuple or a
+    dict. For a tuple, only the first element is used. For a dict, only the
+    `"loss"` item.
+
+    """
+
+    def impl(func):
+        optimizer.zero_grad()
+        loss = func(*args, **kwargs)
+
+        if isinstance(loss, tuple):
+            loss[0].backward()
+
+        elif isinstance(loss, dict):
+            loss["loss"].backward()
+
+        else:
+            loss.backward()
+
+        optimizer.step()
+
+        return smap(float, loss)
+
+    if func is None:
+        return impl
+
+    return impl(func)
 
 
 def identity(x):
+    """Return the argument unchanged"""
     return x
 
 
@@ -436,6 +461,7 @@ def factorized_quadratic(x, weights):
 
 
 def masked_softmax(logits, mask, axis=-1, eps=1e-9):
+    """Compute a masked softmax"""
     keep = 1.0 - mask.type(logits.dtype)
     p = keep * torch.softmax(logits * keep, axis=axis)
     p = p / (eps + p.sum(axis=axis, keepdims=True))
@@ -490,6 +516,8 @@ class DiagonalScaleShift(torch.nn.Module):
 
 
 class Identity(torch.nn.Module):
+    """A module that does not modify its argument"""
+
     def forward(self, x):
         return x
 
@@ -502,26 +530,85 @@ class CallableWrapper(torch.nn.Module):
     def __init__(self, func, **kwargs):
         super().__init__()
         self.func = func
-        self.kwargs = kwargs
+
+        self.keys = list(kwargs)
+
+        child_modules = {}
+        child_params = {}
+        untracked = {}
+
+        for key, value in kwargs.items():
+            if isinstance(value, torch.nn.Module):
+                child_modules[key] = value
+
+            elif isinstance(value, torch.nn.Parameter):
+                child_params[key] = value
+
+            else:
+                untracked[key] = value
+
+        self.child_modules = torch.nn.ModuleDict(child_modules)
+        self.child_params = torch.nn.ParameterDict(child_params)
+        self.untracked = untracked
+
+    def _kwargs(self):
+        res = {}
+        for key in self.keys:
+            if key in self.child_modules:
+                res[key] = self.child_modules[key]
+
+            elif key in self.child_params:
+                res[key] = self.child_params[key]
+
+            else:
+                res[key] = self.untracked[key]
+
+        return res
 
     def extra_repr(self):
-        return format_extra_repr(("func", self.func), *self.kwargs.items())
+        return format_extra_repr(("func", self.func))
 
 
 class Do(CallableWrapper):
-    """Call a function as a pure side-effect."""
+    """Module that calls a function as a pure side-effect
 
-    def forward(self, x, **kwargs):
-        self.func(x, **kwargs, **self.kwargs)
+    The module can take additional keyword arguments. If the keyword arguments
+    are modules themselves or parameters they are found by `.parameters()`.
+    """
+
+    def forward(self, x, *xx, **kwargs):
+        self.func(x, *xx, **kwargs, **self._kwargs())
         return x
 
 
 class Lambda(CallableWrapper):
+    """Module that calls a function inline
+
+    The module can take additional keyword arguments. If the keyword arguments
+    are modules themselves or parameters they are found by `.parameters()`.
+
+    For example, this module calls an LSTM and returns only the ouput, not the
+    state::
+
+        mod = Lambda(
+            lambda x, nn: nn(x)[0],
+            nn=torch.nn.LSTM(5, 5),
+        )
+
+        mod(torch.randn(20, 10, 5))
+
+    """
+
     def forward(self, *x, **kwargs):
-        return self.func(*x, **kwargs, **self.kwargs)
+        return self.func(*x, **kwargs, **self._kwargs())
 
 
 class LocationScale(torch.nn.Module):
+    """Split its input into a location / scale part
+
+    The scale part will be positive.
+    """
+
     def __init__(self, activation=None, eps=1e-6):
         super().__init__()
 
@@ -547,59 +634,86 @@ class LocationScale(torch.nn.Module):
         return f"eps={self.eps},"
 
 
-# TODO: figure out how to properly place the nodes
-# TODO: use linear interpolation
-class LookupFunction(torch.nn.Module):
-    """Helper to define a lookup function incl. its gradient.
+class SplineBasis(torch.nn.Module):
+    """Compute basis splines
 
-    Usage::
+    Example::
 
-        import scipy.special
+        basis = SplineBasis(knots, order=3)
+        basis = torch.jit.script(basis)
 
-        x = np.linspace(0, 10, 100).astype('float32')
-        iv0 = scipy.special.iv(0, x).astype('float32')
-        iv1 = scipy.special.iv(1, x).astype('float32')
+        x = np.linspace(0, 4, 100)
+        r = n2n(basis, dtype="float32")(x)
 
-        iv = LookupFunction(x.min(), x.max(), iv0, iv1)
+        plt.plot(x, r)
+    """
 
-        a = torch.linspace(0, 20, 200, requires_grad=True)
-        g, = torch.autograd.grad(iv(a), a, torch.ones_like(a))
+    def __init__(self, knots, order, eps=1e-6):
+        super().__init__()
+
+        self.order = order
+
+        knots = torch.as_tensor(knots)
+        knots = (
+            knots[0, None].repeat(order + 1),
+            knots[1:-1],
+            knots[-1, None].repeat(order + 1),
+        )
+
+        self.knots = torch.cat(knots)
+
+        # NOTE: for torch==1.7.0 jitting requires this combination of tensor / float
+        self.eps = torch.tensor(eps)
+        self.lower = float(self.knots[0]) + eps
+        self.upper = float(self.knots[-1]) - eps
+
+        self.n_splines = len(self.knots) - (1 + order)
+
+    def forward(self, x):
+        # adapted from https://en.wikipedia.org/wiki/B-spline
+        x = x[..., None]
+        knots = self.knots
+
+        res = (knots[:-1] < x).type_as(x) * (x <= knots[1:]).type_as(x)
+
+        for k in range(1, self.order + 1):
+            omega = (x - knots[:-k]) / torch.maximum(self.eps, knots[k:] - knots[:-k])
+            res = omega[..., :-1] * res[..., :-1] + (1 - omega[..., 1:]) * res[..., 1:]
+
+        return res
+
+
+class SplineFunction(torch.nn.Module):
+    """A function based on splines
+
+    Example::
+
+        func = SplineFunction([0.0, 1.0, 2.0, 3.0, 4.0], order=3)
+        func = torch.jit.script(func)
+
+        optim = torch.optim.Adam(func.parameters(), lr=1e-1)
+
+        for _ in range(200):
+            optim.zero_grad()
+            loss = ((y - func(x)) ** 2.0).mean()
+            loss.backward()
+            optim.step()
 
     """
 
-    def __init__(self, input_min, input_max, forward_values, backward_values):
+    def __init__(self, knots, order):
         super().__init__()
-        self.input_min = torch.as_tensor(input_min)
-        self.input_max = torch.as_tensor(input_max)
-        self.forward_values = torch.as_tensor(forward_values)
-        self.backward_values = torch.as_tensor(backward_values)
+
+        self.basis = SplineBasis(knots=knots, order=order)
+        self.coeffs = torch.nn.Parameter(torch.randn(self.basis.n_splines))
 
     def forward(self, x):
-        return _LookupFunction.apply(
-            x, self.input_min, self.input_max, self.forward_values, self.backward_values
-        )
+        lower = self.basis.lower
+        upper = self.basis.upper
 
-
-class _LookupFunction(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, x, input_min, input_max, forward_values, backward_values):
-        idx_max = len(forward_values) - 1
-        idx_scale = idx_max / (input_max - input_min)
-        idx = (idx_scale * (x - input_min)).type(torch.long)
-        idx = torch.clamp(idx, 0, idx_max)
-
-        if backward_values is not None:
-            ctx.save_for_backward(backward_values[idx])
-
-        else:
-            ctx.save_for_backward(None)
-
-        return forward_values[idx]
-
-    @staticmethod
-    def backward(ctx, grad_output):
-        (backward_values,) = ctx.saved_tensors
-        return grad_output * backward_values, None, None, None, None
+        x = torch.clip(x, lower, upper)
+        x = self.basis(x)
+        return (self.coeffs * x).sum(-1)
 
 
 def make_mlp(
@@ -611,6 +725,7 @@ def make_mlp(
     activation=None,
     container=torch.nn.Sequential,
 ):
+    """Build a feed-forward network"""
     if isinstance(hidden, int):
         hidden = [hidden]
 

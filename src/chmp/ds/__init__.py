@@ -1393,24 +1393,57 @@ def _get_caller_logger(depth=2):
     return logging.getLogger(name)
 
 
-def print_status(*items, width=120, clear=True):
-    """Helper to print a status message in a loop.
+def _setup_status(func):
+    def config(width=None, interval=None):
+        if width is not None:
+            func.width = width
 
-    The messages are only printed every 500 ms to not create undue load. Each
-    item can also be callable without an argument. In that case, the item is
-    first executed and then printed.
+        if interval is not None:
+            func.debouncer.interval = interval
+
+    func.debouncer = Debouncer(interval=0.5)
+    func.width = 120
+    func.config = config
+
+    return func
+
+
+@_setup_status
+def status(**items):
+    """Print (and update) a status line
+
+    Usage::
+
+        status(epoch=epoch, loss=("{:.2f}", loss), complex=callable)
+
+    The print call is debounced to only execute only twice per second and to
+    take up at most 120 characters. To change these settings use the `config`
+    function::
+
+        status.config(width=80, interval=2)
+
     """
-    if not print_status._debouncer.should_run():
+    if not status.debouncer.should_run():
         return
 
-    message = " ".join(
-        str(item) if not callable(item) else str(item()) for item in items
-    )
-    print(message.ljust(width)[:width], end="\r" if clear else "\n")
-    print_status._debouncer.invoked()
+    status.debouncer.invoked()
 
+    kv_pairs = []
 
-print_status._debouncer = Debouncer(0.5)
+    for key, val in items.items():
+        if callable(val):
+            val = val()
+
+        if isinstance(val, tuple):
+            fmt, val = val
+
+        else:
+            fmt, val = "{}", val
+
+        kv_pairs.append(("{}=" + fmt).format(key, val))
+
+    status_line = " ".join(kv_pairs)
+    print(status_line[: status.width].ljust(status.width), end="\r")
 
 
 def find_categorical_columns(df):

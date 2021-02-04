@@ -80,6 +80,36 @@ pred = batched_n2n(model, batch_size=128)(x)
 ```
 
 
+### `chmp.torch_utils.optimizer_step`
+`chmp.torch_utils.optimizer_step(optimizer, func=None, *args, **kwargs)`
+
+Call the optimizer
+
+This function can be used directly, as in:
+
+```python
+loss = optimizer_step(optimizer, evaluate_loss)
+```
+
+or as a decorator:
+
+```python
+@optimizer_step(optimizer)
+def loss():
+    return evaluate_loss()
+```
+
+The loss returned by evaluate_loss can be scalar loss, a tuple or a
+dict. For a tuple, only the first element is used. For a dict, only the
+"loss" item.
+
+
+### `chmp.torch_utils.identity`
+`chmp.torch_utils.identity(x)`
+
+Return the argument unchanged
+
+
 ### `chmp.torch_utils.linear`
 `chmp.torch_utils.linear(x, weights)`
 
@@ -106,6 +136,12 @@ A factorized quadratic interaction.
   shape `(n_factors, in_features, out_features)`
 
 
+### `chmp.torch_utils.masked_softmax`
+`chmp.torch_utils.masked_softmax(logits, mask, axis=-1, eps=1e-09)`
+
+Compute a masked softmax
+
+
 ### `chmp.torch_utils.find_module`
 `chmp.torch_utils.find_module(root, predicate)`
 
@@ -128,31 +164,95 @@ a `RuntimeError`.
 Scale and shift the inputs along each dimension independently.
 
 
+### `chmp.torch_utils.Identity`
+`chmp.torch_utils.Identity()`
+
+A module that does not modify its argument
+
+Initializes internal Module state, shared by both nn.Module and ScriptModule.
+
+
 ### `chmp.torch_utils.Do`
 `chmp.torch_utils.Do(func, **kwargs)`
 
-Call a function as a pure side-effect.
+Module that calls a function as a pure side-effect
+
+The module can take additional keyword arguments. If the keyword arguments
+are modules themselves or parameters they are found by .parameters().
 
 
-### `chmp.torch_utils.LookupFunction`
-`chmp.torch_utils.LookupFunction(input_min, input_max, forward_values, backward_values)`
+### `chmp.torch_utils.Lambda`
+`chmp.torch_utils.Lambda(func, **kwargs)`
 
-Helper to define a lookup function incl. its gradient.
+Module that calls a function inline
 
-Usage:
+The module can take additional keyword arguments. If the keyword arguments
+are modules themselves or parameters they are found by .parameters().
+
+For example, this module calls an LSTM and returns only the ouput, not the
+state:
 
 ```python
-import scipy.special
+mod = Lambda(
+    lambda x, nn: nn(x)[0],
+    nn=torch.nn.LSTM(5, 5),
+)
 
-x = np.linspace(0, 10, 100).astype('float32')
-iv0 = scipy.special.iv(0, x).astype('float32')
-iv1 = scipy.special.iv(1, x).astype('float32')
-
-iv = LookupFunction(x.min(), x.max(), iv0, iv1)
-
-a = torch.linspace(0, 20, 200, requires_grad=True)
-g, = torch.autograd.grad(iv(a), a, torch.ones_like(a))
+mod(torch.randn(20, 10, 5))
 ```
+
+
+### `chmp.torch_utils.LocationScale`
+`chmp.torch_utils.LocationScale(activation=None, eps=1e-06)`
+
+Split its input into a location / scale part
+
+The scale part will be positive.
+
+
+### `chmp.torch_utils.SplineBasis`
+`chmp.torch_utils.SplineBasis(knots, order, eps=1e-06)`
+
+Compute basis splines
+
+Example:
+
+```python
+basis = SplineBasis(knots, order=3)
+basis = torch.jit.script(basis)
+
+x = np.linspace(0, 4, 100)
+r = n2n(basis, dtype="float32")(x)
+
+plt.plot(x, r)
+```
+
+
+### `chmp.torch_utils.SplineFunction`
+`chmp.torch_utils.SplineFunction(knots, order)`
+
+A function based on splines
+
+Example:
+
+```python
+func = SplineFunction([0.0, 1.0, 2.0, 3.0, 4.0], order=3)
+func = torch.jit.script(func)
+
+optim = torch.optim.Adam(func.parameters(), lr=1e-1)
+
+for _ in range(200):
+    optim.zero_grad()
+    loss = ((y - func(x)) ** 2.0).mean()
+    loss.backward()
+    optim.step()
+```
+
+
+### `chmp.torch_utils.make_mlp`
+`chmp.torch_utils.make_mlp(in_features, out_features, *, hidden=(), hidden_activation=<class 'torch.nn.modules.activation.ReLU'>, activation=None, container=<class 'torch.nn.modules.container.Sequential'>)`
+
+Build a feed-forward network
 
 
 ### `chmp.torch_utils.NumpyDataset`
