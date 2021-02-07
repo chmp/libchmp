@@ -133,14 +133,14 @@ class ReplayBuffer:
             return
 
         new_capacity = max(min_capacity, int(1.2 * self._capacity))
-        delta_capacity = new_capacity - self._capacity
 
         try:
             for k, (shape, dtype) in self.schema.items():
                 old_data = self._data.get(k, [])
-                delta_data = np.empty((delta_capacity,) + shape, dtype=dtype)
+                new_data = np.empty((new_capacity,) + shape, dtype=dtype)
+                new_data[: self._capacity] = old_data
 
-                self._data[k] = np.concatenate([old_data, delta_data], axis=0)
+                self._data[k] = new_data
 
         except Exception:
             self._data = {k: v[: self._capacity] for k, v in self._data.items()}
@@ -185,6 +185,12 @@ class ReplayBuffer:
         except:
             self.rollback()
             raise
+
+    def to_dataset(self, keys=("obs", "next_obs", "action", "reward", "done")):
+        from chmp.torch_utils import NumpyDataset
+
+        data = {key: getattr(self.c, key) for key in keys}
+        return NumpyDataset(data)
 
 
 class ReplayBufferColumns:
@@ -251,4 +257,28 @@ def add_reward_to_go(
     """Return a new dict with the reward_to_go added as a new column."""
     episode = dict(episode)
     episode[reward_to_go_column] = np.cumsum(episode[reward_column][::-1])[::-1]
+    return episode
+
+
+def simulate(env, agent, max_steps=1024):
+    episode = []
+    obs = env.reset()
+
+    for _ in range(max_steps):
+        action = agent.act(obs)
+        new_obs, reward, done, _ = env.step(action)
+
+        step = dict(
+            obs=obs,
+            next_obs=new_obs,
+            action=action,
+            reward=reward,
+            done=done,
+        )
+        episode.append(step)
+        obs = new_obs
+
+        if done:
+            break
+
     return episode

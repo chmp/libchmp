@@ -71,7 +71,7 @@ into the export namespace after each call to `run`.
 
 
 ### `chmp.csc.CellScript`
-`chmp.csc.CellScript(path, *, cell_marker='%%', verbose=True, ns=None, export_ns=None)`
+`chmp.csc.CellScript(path, *, cell_marker='%%', verbose=True, ns=None, export_ns=None, args=None)`
 
 Allow to execute a python script step by step
 
@@ -106,6 +106,9 @@ train_script.ns.model
 * **export_ns** (*any*):
   The namespace to use for variable exports, see also the `export`
   method. Per default the `__main__` module will be used.
+* **args** (*any*):
+  If not `None`, sys.args will be patched with the items of this object
+  before executing code inside the script scope.
 
 
 #### `chmp.csc.CellScript.run`

@@ -56,6 +56,7 @@ After exports are declared, the variables are copied from the script namespace
 into the export namespace after each call to ``run``.
 
 """
+import contextlib
 import enum
 import pathlib
 import re
@@ -64,6 +65,8 @@ import textwrap
 import types
 
 from typing import Any, Dict, List, Tuple, Union, Optional
+
+from chmp.ds import patch
 
 __all__ = ["CellScript"]
 
@@ -98,6 +101,9 @@ class CellScript:
     :param export_ns:
         The namespace to use for variable exports, see also the ``export``
         method. Per default the ``__main__`` module will be used.
+    :param args:
+        If not ``None``, sys.args will be patched with the items of this object
+        before executing code inside the script scope.
     """
 
     path: pathlib.Path
@@ -116,12 +122,14 @@ class CellScript:
         verbose=True,
         ns=None,
         export_ns=None,
+        args=None,
     ):
         self.path = pathlib.Path(path)
         self.verbose = verbose
         self.cell_marker = str(cell_marker)
         self.ns = self._valid_ns(ns, self.path)
         self.export_ns = self._valid_export_ns(export_ns)
+        self.args = self._valid_args(args)
 
         self.exports = dict()
         self.cell_pattern = re.compile(
@@ -145,6 +153,22 @@ class CellScript:
         import __main__
 
         return __main__
+
+    @staticmethod
+    def _valid_args(args):
+        if args is None:
+            return args
+
+        elif isinstance(args, dict):
+            res = []
+
+            for key, val in args.items():
+                res += [f"--{key}", f"{val}"]
+
+            return res
+
+        else:
+            return [str(item) for item in args]
 
     def run(self, *cells: Union[int, str]):
         """Execute cells inside the script
@@ -214,8 +238,9 @@ class CellScript:
             ''')
 
         """
-        # NOTE add parens to make multiline expressions safe
-        return eval("(" + expr.strip() + ")", vars(self.ns), vars(self.ns))
+        with self._patched_env():
+            # NOTE add parens to make multiline expressions safe
+            return eval("(" + expr.strip() + ")", vars(self.ns), vars(self.ns))
 
     def exec(self, source: str):
         """Execute a Python block inside the script namespace.
@@ -232,7 +257,8 @@ class CellScript:
         source = source.strip()
         source = textwrap.dedent(source)
 
-        exec(source, vars(self.ns), vars(self.ns))
+        with self._patched_env():
+            exec(source, vars(self.ns), vars(self.ns))
 
     def load(self, cell: Union[int, str]):
         """Load a cell into the notebook.
@@ -262,7 +288,9 @@ class CellScript:
         source = "\n" * cell.range[0] + cell.source
 
         code = compile(source, str(self.path.resolve()), "exec")
-        exec(code, vars(self.ns), vars(self.ns))
+
+        with self._patched_env():
+            exec(code, vars(self.ns), vars(self.ns))
 
     def _find_cell(self, parsed_cells, cell):
         cands = [c for c in parsed_cells if c.matches(cell)]
@@ -291,6 +319,15 @@ class CellScript:
             lines = lines[:9] + ["..."]
 
         print("\n".join(lines), file=sys.stderr)
+
+    @contextlib.contextmanager
+    def _patched_env(self):
+        if self.args is None:
+            yield
+            return
+
+        with patch(sys, argv=[str(self.path), *self.args]):
+            yield
 
 
 def parse_script(fobj, cell_pattern):

@@ -20,6 +20,7 @@ import itertools as it
 import json
 import logging
 import math
+import operator as op
 import os.path
 import pathlib
 import pickle
@@ -250,6 +251,10 @@ class undefined(metaclass=undefined_meta):
 
     def __init__(self):
         pass
+
+
+def prod(shape):
+    return ft.reduce(op.mul, shape, 1)
 
 
 def first(iterable, default=undefined):
