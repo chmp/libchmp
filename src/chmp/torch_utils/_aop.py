@@ -1,189 +1,196 @@
-"""A minimalist aspect orientied programming lib
-"""
-import collections
-import contextlib
 import contextvars
+import contextlib
 import functools as ft
-import inspect
 
 
-_aspects = contextvars.ContextVar("aspects")
-_modified_root = contextvars.ContextVar("modified_root")
+class System:
+    def __init__(self, root, aspects=None, prototype=None):
+        if aspects is None:
+            aspects = {}
+
+        if prototype is None:
+            prototype = {}
+
+        self.root = root
+        self.aspects = aspects
+        self.prototype = {}
+
+    def __call__(self, *args, **kwargs):
+        with Context(self), Context.call(self.root):
+            return proceed(*args, **kwargs)
+
+    def copy(self):
+        return type(self)(
+            self.root, _copy_aspects(self.aspects), _copy_aspects(self.prototype)
+        )
+
+    def reset(self):
+        self.aspects = _copy_aspects(self.prototype)
+
+
+def _copy_aspects(aspects):
+    return {k: list(v) for k, v in aspects.items()}
+
+
+def proceed(*args, **kwargs):
+    return Context.proceed(*args, **kwargs)
+
+
+def replace(system, point, *, prototype=False):
+    return _decorator_impl(system, point, prototype, lambda curr, prev: [curr])
+
+
+def decorate(system, point, *, prototype=False):
+    return _decorator_impl(system, point, prototype, lambda curr, prev: [curr, *prev])
+
+
+def before(system, point, *, prototype=False):
+    return _decorator_impl(
+        system, point, prototype, lambda curr, prev: [curr, *prev], _before_wrapper
+    )
+
+
+def after(system, point, *, prototype=False):
+    return _decorator_impl(
+        system, point, prototype, lambda curr, prev: [curr, *prev], _after_wrapper
+    )
+
+
+def add_aspect(system, aspect, *, prototype=False):
+    targets = _targets(system, prototype=prototype)
+
+    for point, advice in aspect._aspects.items():
+        key = _key(point)
+        for target in targets:
+            target[key] = [advice, *target.get(key, [])]
+
+    return aspect
+
+
+class joinpoint:
+    def __init__(self, key):
+        if not isinstance(key, str):
+            key = f"{key.__module__}.{key.__name__}"
+
+        self.key = key
+
+    def __call__(self, *args, **kwargs):
+        with Context.call(self.key):
+            return proceed(*args, **kwargs)
+
+
+class Context:
+    _active = contextvars.ContextVar("_active", default=None)
+
+    def __init__(self, system):
+        self.system = system
+        self.stack = []
+
+    @classmethod
+    def call(cls, point):
+        return _context_call_impl(cls, point)
+
+    @classmethod
+    def proceed(*args, **kwargs):
+        cls, *args = args
+
+        # TODO: clean this up
+        ctx = cls._active.get()
+
+        stack_idx = len(ctx.stack) - 1
+        key, chain_idx = ctx.stack[stack_idx]
+        ctx.stack[stack_idx] = (key, chain_idx + 1)
+
+        try:
+            try:
+                func_stack = ctx.system.aspects[key]
+            except KeyError as err:
+                raise RuntimeError(f"No implementation for {key} found") from err
+
+            try:
+                func = func_stack[chain_idx]
+
+            except IndexError as err:
+                raise RuntimeError(
+                    f"Internal error for {key}: proceed called in tail"
+                ) from err
+
+            return func(*args, **kwargs)
+
+        finally:
+            ctx.stack[stack_idx] = (key, chain_idx)
+
+    def __enter__(self):
+        assert self._active.get() is None
+        self._active.set(self)
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        assert self._active.get() is self
+        self._active.set(None)
 
 
 @contextlib.contextmanager
-def modify(root):
-    """Customizing the root by adding new aspects."""
-    root, aspects = _unwrap_root(root)
+def _context_call_impl(cls, point):
+    inst = cls._active.get()
+    assert inst is not None
 
-    @ft.wraps(root)
-    def wrapper(*args, **kwargs):
-        return run_with_aspects(root, wrapper.aspects, *args, **kwargs)
-
-    wrapper.aspects = aspects
-
-    if is_joinpoint(root):
-        wrapper._joinpoint_ = root._joinpoint_
-
-    token = _modified_root.set(wrapper)
+    key = _key(point)
+    inst.stack.append((key, 0))
     try:
-        yield wrapper
+        yield
 
     finally:
-        _modified_root.reset(token)
+        inst.stack.pop()
 
 
-def run_with_aspects(root, aspects, /, *args, **kwargs):
-    try:
-        token = _aspects.set(aspects.copy())
-        return root(*args, **kwargs)
-
-    finally:
-        _aspects.reset(token)
-
-
-def joinpoint(key):
-    """Mark a function as a possible joinpoint that can be customized.
-
-    Usage::
-
-        @joinpoint("my_joinpoint")
-        def my_joinpoint():
-            ...
-
-    """
-    assert isinstance(key, str)
+def _decorator_impl(system, point, prototype, impl, wrapper=None):
+    key = _key(point)
+    targets = _targets(system, prototype=prototype)
 
     def decorator(func):
-        def root_aspect(proceed, /, *args, **kwargs):
-            return func(*args, **kwargs)
+        if wrapper is not None:
+            func = wrapper(func)
 
-        @ft.wraps(func)
-        def wrapper(*args, **kwargs):
-            aspects = [*_get_active_aspects(key), root_aspect]
-            return proceed(aspects, *args, **kwargs)
-
-        wrapper._joinpoint_ = key
-        return wrapper
+        for target in targets:
+            target[key] = impl(func, target.get(key, []))
+        return func
 
     return decorator
 
 
-def proceed(chain, /, *args, **kwargs):
-    head, *tail = chain
-    return head(ft.partial(proceed, tail), *args, **kwargs)
+def _key(obj):
+    if hasattr(obj, "key"):
+        return obj.key
+
+    return obj
 
 
-def is_joinpoint(obj):
-    """Is the passed object a joinpoint?"""
-    return hasattr(obj, "_joinpoint_")
+def _targets(system, prototype=False):
+    if prototype:
+        return [system.aspects, system.prototype]
+
+    else:
+        return [system.aspects]
 
 
-def add_aspect(aspect):
-    """Add an aspect to the currently root currently being modified."""
-    modified_root = _modified_root.get()
-    _update_aspects(modified_root.aspects, aspect)
-    return aspect
+def _before_wrapper(func):
+    @ft.wraps(func)
+    def wrapper(*args, **kwargs):
+        func(*args, **kwargs)
+        return proceed(*args, **kwargs)
 
-
-def _aspect_factory(impl):
-    def wrapper(point):
-        def decorator(advice):
-            add_aspect({point: [ft.partial(impl, advice)]})
-            return advice
-
-        return decorator
-
-    wrapper.__name__ = impl.__name__
-    wrapper.__doc__ = impl.__doc__
+    wrapper._aspect_hint = "before"
 
     return wrapper
 
 
-@_aspect_factory
-def before(advice, proceed, /, *args, **kwargs):
-    """Run the advice before proceeding."""
-    advice_args, advice_kwargs = _get_advice_args(advice, args, kwargs)
-    advice(*advice_args, **advice_kwargs)
-    return proceed(*args, **kwargs)
+def _after_wrapper(func):
+    @ft.wraps(func)
+    def wrapper(*args, **kwargs):
+        res = proceed(*args, **kwargs)
+        func(*args, **kwargs)
+        return res
 
+    wrapper._aspect_hint = "after"
 
-@_aspect_factory
-def after(advice, proceed, /, *args, **kwargs):
-    """Run the advice after proceeding, the result is passed as the first arg."""
-    res = proceed(*args, **kwargs)
-
-    advice_args, advice_kwargs = _get_advice_args(advice, (res, *args), kwargs)
-    advice(*advice_args, **advice_kwargs)
-    return res
-
-
-@_aspect_factory
-def around(advice, proceed, /, *args, **kwargs):
-    """Call the advice with proceed as the first argument"""
-    advice_args, advice_kwargs = _get_advice_args(advice, (proceed, *args), kwargs)
-    return advice(*advice_args, **advice_kwargs)
-
-
-@_aspect_factory
-def replace(advice, proceed, /, *args, **kwargs):
-    """Call the advice instead of proceed"""
-    advice_args, advice_kwargs = _get_advice_args(advice, args, kwargs)
-    return advice(*advice_args, **advice_kwargs)
-
-
-def _get_advice_args(advice, args, kwargs):
-    sig = inspect.signature(advice)
-
-    accept_posargs = 0
-    accept_kwargs = collections.OrderedDict()
-
-    for name, desc in sig.parameters.items():
-        if desc.kind in {desc.POSITIONAL_OR_KEYWORD, desc.POSITIONAL_ONLY}:
-            accept_posargs += 1
-
-        elif desc.kind == desc.VAR_POSITIONAL:
-            accept_posargs = len(args)
-
-        elif desc.kind == desc.KEYWORD_ONLY:
-            accept_kwargs[name] = None
-
-        elif desc.kind == desc.VAR_KEYWORD:
-            for key in kwargs:
-                if not key in accept_kwargs:
-                    accept_kwargs[key] = None
-
-    assert accept_posargs <= len(args)
-
-    return args[:accept_posargs], {key: kwargs[key] for key in accept_kwargs}
-
-
-def _unwrap_root(root):
-    if hasattr(root, "aspects"):
-        aspects = {k: list(v) for k, v in root.aspects.items()}
-        root = root.__wrapped__
-
-    else:
-        aspects = {}
-
-    return root, aspects
-
-
-def _update_aspects(target, obj):
-    for point, advices in _get_aspects(obj).items():
-        target[point] = [*advices, *target.get(point, [])]
-
-    return target
-
-
-def _get_active_aspects(key):
-    aspects = _aspects.get({})
-    return aspects.get(key, [])
-
-
-def _get_aspects(obj):
-    if hasattr(obj, "_aspects"):
-        obj = obj._aspects
-
-    assert isinstance(obj, dict)
-    return obj
+    return wrapper

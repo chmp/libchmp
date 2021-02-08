@@ -5,16 +5,18 @@ import sys
 
 import torch
 
-from ..ds import status as _status, smap
+from chmp.ds import status as _status, smap
+
 from . import make_data_loader
 from ._aop import (
-    joinpoint,
+    System,
     add_aspect,
-    before,
     after,
-    around,
-    modify,
+    before,
+    joinpoint,
     replace,
+    decorate,
+    proceed,
 )
 
 
@@ -24,36 +26,37 @@ __all__ = [
     # Utilities
     "TrainLossHistory",
     # Re-export the AOP API
-    "joinpoint",
+    "System",
     "add_aspect",
-    "before",
     "after",
-    "around",
-    "modify",
+    "before",
+    "joinpoint",
+    "proceed",
     "replace",
+    "decorate",
 ]
 
+train_loop = System("train_loop")
 
-@joinpoint("train_loop")
-def train_loop(*, max_epochs, epoch=0, **kwargs):
-    step = train_step
+
+@replace(train_loop, "train_loop", prototype=True)
+def _train_loop(*, max_epochs, epoch=0, **kwargs):
 
     for epoch in range(epoch, max_epochs):
-        next_step = step(epoch=epoch, max_epochs=max_epochs, **kwargs)
+        next_step = joinpoint("train_step")(
+            epoch=epoch, max_epochs=max_epochs, **kwargs
+        )
 
         if next_step is False:
             break
 
-        elif next_step is not None:
-            step = next_step
 
-
-@joinpoint("train_step")
-def train_step(epoch, max_epochs, **kwargs):
-    dl = data_loader(epoch=epoch, max_epochs=max_epochs, **kwargs)
+@replace(train_loop, "train_step", prototype=True)
+def _train_step(*, epoch, max_epochs, **kwargs):
+    dl = joinpoint("data_loader")(epoch=epoch, max_epochs=max_epochs, **kwargs)
 
     for idx, batch in enumerate(dl):
-        step_result = optimizer_step(
+        step_result = joinpoint("optimizer_step")(
             batch,
             epoch=epoch,
             max_epochs=max_epochs,
@@ -61,7 +64,7 @@ def train_step(epoch, max_epochs, **kwargs):
         )
         step_result = smap(lambda v: v.item(), step_result)
 
-        status = prepare_status(
+        status = joinpoint("prepare_status")(
             epoch=epoch,
             batch=idx,
             n_batches=len(dl),
@@ -70,7 +73,7 @@ def train_step(epoch, max_epochs, **kwargs):
             step_result=step_result,
             **kwargs,
         )
-        log_status(
+        joinpoint("log_status")(
             status,
             epoch=epoch,
             max_epochs=max_epochs,
@@ -79,30 +82,30 @@ def train_step(epoch, max_epochs, **kwargs):
         )
 
 
-@joinpoint("data_loader")
-def data_loader(*, dataset, batch_size=10, **kwargs):
+@replace(train_loop, "data_loader", prototype=True)
+def _data_loader(*, dataset, batch_size=10, **kwargs):
     return make_data_loader(dataset, batch_size=batch_size)
 
 
-@joinpoint("optimizer_step")
-def optimizer_step(batch, *, optimizer, **kwargs):
+@replace(train_loop, "optimizer_step", prototype=True)
+def _optimizer_step(batch, *, optimizer, **kwargs):
     optimizer.zero_grad()
 
-    loss = compute_loss(batch, optimizer=optimizer, **kwargs)
+    loss = joinpoint("compute_loss")(batch, optimizer=optimizer, **kwargs)
     _get_optimization_loss(loss).backward()
     optimizer.step()
 
     return loss
 
 
-@joinpoint("compute_loss")
-def compute_loss(batch, *, model, loss_fn, **kwargs):
+@replace(train_loop, "compute_loss", prototype=True)
+def _compute_loss(batch, *, model, loss_fn, **kwargs):
     x, y = _get_xy(batch)
     return loss_fn(y, model(x))
 
 
-@joinpoint("prepare_status")
-def prepare_status(step_result, epoch, max_epochs, batch, n_batches, **kwargs):
+@replace(train_loop, "prepare_status", prototype=True)
+def _prepare_status(step_result, epoch, max_epochs, batch, n_batches, **kwargs):
     # TODO: handle different optimizer step results
     return dict(
         done=(
@@ -113,8 +116,8 @@ def prepare_status(step_result, epoch, max_epochs, batch, n_batches, **kwargs):
     )
 
 
-@joinpoint("log_status")
-def log_status(status, **kwargs):
+@replace(train_loop, "log_status", prototype=True)
+def _log_status(status, **kwargs):
     _status(**status)
 
 
@@ -164,7 +167,7 @@ class TrainLossHistory:
     def __init__(self):
         self.history = None
 
-    def optimizer_step_advice(self, proceed, /, *args, **kwargs):
+    def optimizer_step_advice(self, *args, **kwargs):
         res = proceed(*args, **kwargs)
 
         if self.history is None:
@@ -179,7 +182,7 @@ class TrainLossHistory:
 
     @property
     def _aspects(self):
-        return {"optimizer_step": [self.optimizer_step_advice]}
+        return {optimizer_step: self.optimizer_step_advice}
 
     def _ipython_key_completions_(self):
         if isinstance(self.history, dict):
@@ -196,17 +199,17 @@ class Checkpointer:
         self.keep = keep
         self.every = every
 
-    def _train_loop(self, proceed, /, epoch=0, **kwargs):
+    def _train_loop(self, *, epoch=0, **kwargs):
         if self.objects is None:
             self.objects = self._build_default_objects(kwargs)
 
         checkpoint = self._find_latest_checkpoint()
         if checkpoint is not None:
-            self._load_checkpoint(checkpoint)
+            epoch = self._load_checkpoint(checkpoint)
 
         return proceed(epoch=epoch, **kwargs)
 
-    def _train_step(self, proceed, /, *, epoch, **kwargs):
+    def _train_step(self, *, epoch, **kwargs):
         res = proceed(epoch=epoch, **kwargs)
 
         if self._should_save(epoch):
@@ -241,6 +244,8 @@ class Checkpointer:
 
         for i, path in enumerate(meta["objects"]):
             self.objects[i].load_state_dict(torch.load(self.path / path))
+
+        return epoch
 
     def _should_save(self, epoch):
         if self.every is None:
@@ -288,6 +293,6 @@ class Checkpointer:
     @property
     def _aspects(self):
         return {
-            "train_loop": [self._train_loop],
-            "train_step": [self._train_step],
+            train_loop_root: self._train_loop,
+            train_step: self._train_step,
         }

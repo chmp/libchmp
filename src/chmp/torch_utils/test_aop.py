@@ -1,28 +1,48 @@
-from chmp.torch_utils._aop import joinpoint, run_with_aspects, modify, add_aspect
+from chmp.torch_utils._aop import (
+    joinpoint,
+    System,
+    proceed,
+    replace,
+    decorate,
+)
 
 
 def test_example():
-    assert run_with_aspects(root, {}, 2) == 4
-
-    assert run_with_aspects(root, {"inner": [aspect]}, 2) == -4
+    assert system(2) == 4
 
 
-def test_modify():
-    with modify(root) as my_root:
-        add_aspect({"inner": [aspect]})
+def test_customized():
+    new_system = system.copy()
 
-    assert root(2) == 4
-    assert my_root(2) == -4
+    @decorate(new_system, "inner")
+    def _(val):
+        return -proceed(val)
 
-
-def aspect(proceed, val):
-    return -proceed(val)
+    assert new_system(2) == -4
 
 
+def test_multiple_proceeds():
+    new_system = system.copy()
+
+    @decorate(new_system, "inner")
+    def _(val):
+        return -proceed(val)
+
+    @decorate(new_system, "inner")
+    def _(val):
+        return proceed(val) + proceed(val)
+
+    assert new_system(2) == -8
+
+
+system = System("root")
+
+
+@replace(system, "root", prototype=True)
 def root(val):
-    return inner(val)
+    return joinpoint("inner")(val)
 
 
-@joinpoint("inner")
+@replace(system, "inner", prototype=True)
 def inner(val):
     return 2 * val
