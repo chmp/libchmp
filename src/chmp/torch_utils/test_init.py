@@ -120,6 +120,47 @@ def test_make_mlp():
     make_mlp(5, 5, hidden=10, activation=torch.nn.Softplus)
 
 
+@pytest.mark.parametrize(
+    "shapes, inputs, expected",
+    [
+        (
+            (5, 4),
+            [(10, 5)],
+            (10, 4),
+        ),
+        (
+            ((3, 2), 4),
+            [(10, 3, 2)],
+            (10, 4),
+        ),
+        (
+            ((3,), (2,), 4),
+            [(10, 3), (10, 2)],
+            (10, 4),
+        ),
+        (
+            ((3,), (2,), ()),
+            [(10, 3), (10, 2)],
+            (10,),
+        ),
+        (
+            ((), (), ()),
+            [(10,), (10,)],
+            (10,),
+        ),
+        (
+            ((), ()),
+            [(10,)],
+            (10,),
+        ),
+    ],
+)
+def test_make_mlp_examples(shapes, inputs, expected):
+    nn = make_mlp(*shapes)
+    actual = nn(*(torch.zeros(shape) for shape in inputs)).shape
+    assert actual == expected
+
+
 def test_esgradient_example():
     a = torch.nn.Parameter(torch.randn(1, 5))
     b = torch.nn.Parameter(torch.randn(1, 5))

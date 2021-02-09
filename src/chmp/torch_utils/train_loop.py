@@ -167,7 +167,7 @@ class TrainLossHistory:
     def __init__(self):
         self.history = None
 
-    def optimizer_step_advice(self, *args, **kwargs):
+    def _store_train_loss(self, *args, **kwargs):
         res = proceed(*args, **kwargs)
 
         if self.history is None:
@@ -182,7 +182,7 @@ class TrainLossHistory:
 
     @property
     def _aspects(self):
-        return {optimizer_step: self.optimizer_step_advice}
+        return {"optimizer_step": self._store_train_loss}
 
     def _ipython_key_completions_(self):
         if isinstance(self.history, dict):
@@ -199,7 +199,7 @@ class Checkpointer:
         self.keep = keep
         self.every = every
 
-    def _train_loop(self, *, epoch=0, **kwargs):
+    def _restore(self, *, epoch=0, **kwargs):
         if self.objects is None:
             self.objects = self._build_default_objects(kwargs)
 
@@ -209,7 +209,7 @@ class Checkpointer:
 
         return proceed(epoch=epoch, **kwargs)
 
-    def _train_step(self, *, epoch, **kwargs):
+    def _checkpoint(self, *, epoch, **kwargs):
         res = proceed(epoch=epoch, **kwargs)
 
         if self._should_save(epoch):
@@ -293,6 +293,6 @@ class Checkpointer:
     @property
     def _aspects(self):
         return {
-            train_loop_root: self._train_loop,
-            train_step: self._train_step,
+            "train_loop": self._restore,
+            "train_step": self._checkpoint,
         }

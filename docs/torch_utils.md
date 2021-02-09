@@ -250,9 +250,21 @@ for _ in range(200):
 
 
 ### `chmp.torch_utils.make_mlp`
-`chmp.torch_utils.make_mlp(in_features, out_features, *, hidden=(), hidden_activation=<class 'torch.nn.modules.activation.ReLU'>, activation=None, container=<class 'torch.nn.modules.container.Sequential'>)`
+`chmp.torch_utils.make_mlp(*shapes, hidden=(), hidden_activation=<class 'torch.nn.modules.activation.ReLU'>, activation=None, container=<class 'torch.nn.modules.container.Sequential'>)`
 
 Build a feed-forward network
+
+#### Parameters
+
+* **shapes** (*any*):
+  the shapes of the input and outputs. `make_mlp` must be called with
+  at least two arguments. The last argument specifies the output shape.
+  All preceding arguments give the input shapes. Each shape can either
+  be an int or a tuple of ints. If multiple inputs are specified, they
+  will be concatenated before being passed into the MLP. All inputs
+  will be flattened. The output  shape is the shape of the output before
+  the activation function. Any strings in shape will be treated as
+  comments and filtered out.
 
 
 ### `chmp.torch_utils.NumpyDataset`

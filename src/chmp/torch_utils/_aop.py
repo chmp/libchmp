@@ -27,6 +27,25 @@ class System:
     def reset(self):
         self.aspects = _copy_aspects(self.prototype)
 
+    def show(self, fobj=None):
+        lines = [f"root: {self.root}"]
+        for key, advices in self.aspects.items():
+            lines += [f"{key}:"]
+
+            sublines = []
+
+            for idx, advice in enumerate(advices):
+                if hasattr(advice, "_aspect_hint"):
+                    hint = advice._aspect_hint
+                    lines += ["  " * (idx + 1) + f"{advice.__name__} :{hint}"]
+
+                else:
+                    lines += ["  " * (idx + 1) + f"{advice.__name__}"]
+
+            lines += sublines
+
+        print("\n".join(lines), file=fobj)
+
 
 def _copy_aspects(aspects):
     return {k: list(v) for k, v in aspects.items()}
