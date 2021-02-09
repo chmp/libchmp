@@ -80,28 +80,22 @@ pred = batched_n2n(model, batch_size=128)(x)
 ```
 
 
-### `chmp.torch_utils.optimizer_step`
-`chmp.torch_utils.optimizer_step(optimizer, func=None, *args, **kwargs)`
+### `chmp.torch_utils.make_mlp`
+`chmp.torch_utils.make_mlp(*shapes, hidden=(), hidden_activation=<class 'torch.nn.modules.activation.ReLU'>, activation=None, container=<class 'torch.nn.modules.container.Sequential'>)`
 
-Call the optimizer
+Build a feed-forward network
 
-This function can be used directly, as in:
+#### Parameters
 
-```python
-loss = optimizer_step(optimizer, evaluate_loss)
-```
-
-or as a decorator:
-
-```python
-@optimizer_step(optimizer)
-def loss():
-    return evaluate_loss()
-```
-
-The loss returned by evaluate_loss can be scalar loss, a tuple or a
-dict. For a tuple, only the first element is used. For a dict, only the
-"loss" item.
+* **shapes** (*any*):
+  the shapes of the input and outputs. `make_mlp` must be called with
+  at least two arguments. The last argument specifies the output shape.
+  All preceding arguments give the input shapes. Each shape can either
+  be an int or a tuple of ints. If multiple inputs are specified, they
+  will be concatenated before being passed into the MLP. All inputs
+  will be flattened. The output  shape is the shape of the output before
+  the activation function. Any strings in shape will be treated as
+  comments and filtered out.
 
 
 ### `chmp.torch_utils.identity`
@@ -247,24 +241,6 @@ for _ in range(200):
     loss.backward()
     optim.step()
 ```
-
-
-### `chmp.torch_utils.make_mlp`
-`chmp.torch_utils.make_mlp(*shapes, hidden=(), hidden_activation=<class 'torch.nn.modules.activation.ReLU'>, activation=None, container=<class 'torch.nn.modules.container.Sequential'>)`
-
-Build a feed-forward network
-
-#### Parameters
-
-* **shapes** (*any*):
-  the shapes of the input and outputs. `make_mlp` must be called with
-  at least two arguments. The last argument specifies the output shape.
-  All preceding arguments give the input shapes. Each shape can either
-  be an int or a tuple of ints. If multiple inputs are specified, they
-  will be concatenated before being passed into the MLP. All inputs
-  will be flattened. The output  shape is the shape of the output before
-  the activation function. Any strings in shape will be treated as
-  comments and filtered out.
 
 
 ### `chmp.torch_utils.NumpyDataset`

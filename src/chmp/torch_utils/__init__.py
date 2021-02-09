@@ -389,46 +389,147 @@ def batched_n2n(
     return wrapper
 
 
-def optimizer_step(optimizer, func=None, *args, **kwargs):
-    """Call the optimizer
+def make_mlp(
+    *shapes: Tuple[int, Tuple[int]],
+    hidden: Union[Sequence[int], int] = (),
+    hidden_activation=torch.nn.ReLU,
+    activation=None,
+    container=torch.nn.Sequential,
+):
+    """Build a feed-forward network
 
-    This function can be used directly, as in::
-
-        loss = optimizer_step(optimizer, evaluate_loss)
-
-    or as a decorator::
-
-        @optimizer_step(optimizer)
-        def loss():
-            return evaluate_loss()
-
-    The `loss` returned by `evaluate_loss` can be scalar loss, a tuple or a
-    dict. For a tuple, only the first element is used. For a dict, only the
-    `"loss"` item.
-
+    :param shapes:
+        the shapes of the input and outputs. ``make_mlp`` must be called with
+        at least two arguments. The last argument specifies the output shape.
+        All preceding arguments give the input shapes. Each shape can either
+        be an int or a tuple of ints. If multiple inputs are specified, they
+        will be concatenated before being passed into the MLP. All inputs
+        will be flattened. The output  shape is the shape of the output before
+        the activation function. Any strings in shape will be treated as
+        comments and filtered out.
     """
+    if len(shapes) >= 2:
+        *in_features, out_features = (
+            shape for shape in shapes if not isinstance(shape, str)
+        )
 
-    def impl(func):
-        optimizer.zero_grad()
-        loss = func(*args, **kwargs)
+    elif len(shapes) == 1:
+        in_features, out_features = _parse_mlp_formula(*shapes)
 
-        if isinstance(loss, tuple):
-            loss[0].backward()
+    else:
+        raise RuntimeError()
 
-        elif isinstance(loss, dict):
-            loss["loss"].backward()
+    if isinstance(hidden, int):
+        hidden = (hidden,)
 
-        else:
-            loss.backward()
+    layer_in = [
+        sum(_get_layer_features(shape) for shape in in_features),
+        *hidden,
+    ]
 
-        optimizer.step()
+    layer_out = [*hidden, _get_layer_features(out_features)]
+    activations = len(hidden) * [hidden_activation] + [None]
 
-        return smap(float, loss)
+    parts = []
 
-    if func is None:
-        return impl
+    for a, b, act in zip(layer_in, layer_out, activations):
+        parts += [torch.nn.Linear(a, b)]
 
-    return impl(func)
+        if act is not None:
+            parts += [act()]
+
+    if not isinstance(out_features, int):
+        parts += [Reshape((-1, *out_features))]
+
+    if activation is not None:
+        parts += [activation()]
+
+    res = container(*parts) if len(parts) != 1 else parts[0]
+    return _wrap_mlp(in_features, res)
+
+
+def _get_layer_features(shape):
+    if isinstance(shape, int):
+        return shape
+
+    return prod(shape)
+
+
+def _wrap_mlp(in_features, mlp):
+    if len(in_features) == 1 and isinstance(in_features[0], int):
+        return mlp
+
+    if len(in_features) == 1:
+        return _FlatCat1(mlp)
+
+    elif len(in_features) == 2:
+        return _FlatCat2(mlp)
+
+    elif len(in_features) == 3:
+        return _FlatCat3(mlp)
+
+    else:
+        raise RuntimeError("Cannot handle more than three items")
+
+
+class _FlatCat1(torch.nn.Module):
+    def __init__(self, func):
+        super().__init__()
+        self.func = func
+
+    def forward(self, a):
+        x = a.reshape(a.shape[0], -1)
+        return self.func(x)
+
+
+class _FlatCat2(torch.nn.Module):
+    def __init__(self, func):
+        super().__init__()
+        self.func = func
+
+    def forward(self, a, b):
+        x = torch.cat((a.reshape(a.shape[0], -1), b.reshape(b.shape[0], -1)), 1)
+        return self.func(x)
+
+
+class _FlatCat3(torch.nn.Module):
+    def __init__(self, func):
+        super().__init__()
+        self.func = func
+
+    def forward(self, a, b, c):
+        x = torch.cat(
+            (
+                a.reshape(a.shape[0], -1),
+                b.reshape(b.shape[0], -1),
+                c.reshape(b.shape[0], -1),
+            ),
+            1,
+        )
+        return self.func(x)
+
+
+def _parse_mlp_formula(formula):
+    in_shapes, _, out_shape = formula.partition("->")
+
+    in_shapes = eval("(" + in_shapes + ",)")
+    out_shape = eval(out_shape)
+
+    return in_shapes, out_shape
+
+
+def make_data_loader(dataset, mode="fit", **kwargs):
+    if mode == "fit":
+        default_kwargs = dict(shuffle=True, drop_last=True)
+
+    elif mode == "predict":
+        default_kwargs = dict(shuffle=False, drop_last=False)
+
+    else:
+        raise ValueError()
+
+    kwargs = {**default_kwargs, **kwargs}
+    return torch.utils.data.DataLoader(dataset, **kwargs)
 
 
 def identity(x):
@@ -724,149 +825,6 @@ class SplineFunction(torch.nn.Module):
         x = torch.clip(x, lower, upper)
         x = self.basis(x)
         return (self.coeffs * x).sum(-1)
-
-
-def make_mlp(
-    *shapes: Tuple[int, Tuple[int]],
-    hidden: Union[Sequence[int], int] = (),
-    hidden_activation=torch.nn.ReLU,
-    activation=None,
-    container=torch.nn.Sequential,
-):
-    """Build a feed-forward network
-
-    :param shapes:
-        the shapes of the input and outputs. ``make_mlp`` must be called with
-        at least two arguments. The last argument specifies the output shape.
-        All preceding arguments give the input shapes. Each shape can either
-        be an int or a tuple of ints. If multiple inputs are specified, they
-        will be concatenated before being passed into the MLP. All inputs
-        will be flattened. The output  shape is the shape of the output before
-        the activation function. Any strings in shape will be treated as
-        comments and filtered out.
-    """
-    if len(shapes) >= 2:
-        *in_features, out_features = (
-            shape for shape in shapes if not isinstance(shape, str)
-        )
-
-    elif len(shapes) == 1:
-        in_features, out_features = _parse_mlp_formula(*shapes)
-
-    else:
-        raise RuntimeError()
-
-    if isinstance(hidden, int):
-        hidden = (hidden,)
-
-    layer_in = [
-        sum(_get_layer_features(shape) for shape in in_features),
-        *hidden,
-    ]
-
-    layer_out = [*hidden, _get_layer_features(out_features)]
-    activations = len(hidden) * [hidden_activation] + [None]
-
-    parts = []
-
-    for a, b, act in zip(layer_in, layer_out, activations):
-        parts += [torch.nn.Linear(a, b)]
-
-        if act is not None:
-            parts += [act()]
-
-    if not isinstance(out_features, int):
-        parts += [Reshape((-1, *out_features))]
-
-    if activation is not None:
-        parts += [activation()]
-
-    res = container(*parts) if len(parts) != 1 else parts[0]
-    return _wrap_mlp(in_features, res)
-
-
-def _get_layer_features(shape):
-    if isinstance(shape, int):
-        return shape
-
-    return prod(shape)
-
-
-def _wrap_mlp(in_features, mlp):
-    if len(in_features) == 1 and isinstance(in_features[0], int):
-        return mlp
-
-    if len(in_features) == 1:
-        return _FlatCat1(mlp)
-
-    elif len(in_features) == 2:
-        return _FlatCat2(mlp)
-
-    elif len(in_features) == 3:
-        return _FlatCat3(mlp)
-
-    else:
-        raise RuntimeError("Cannot handle more than three items")
-
-
-class _FlatCat1(torch.nn.Module):
-    def __init__(self, func):
-        super().__init__()
-        self.func = func
-
-    def forward(self, a):
-        x = a.reshape(a.shape[0], -1)
-        return self.func(x)
-
-
-class _FlatCat2(torch.nn.Module):
-    def __init__(self, func):
-        super().__init__()
-        self.func = func
-
-    def forward(self, a, b):
-        x = torch.cat((a.reshape(a.shape[0], -1), b.reshape(b.shape[0], -1)), 1)
-        return self.func(x)
-
-
-class _FlatCat3(torch.nn.Module):
-    def __init__(self, func):
-        super().__init__()
-        self.func = func
-
-    def forward(self, a, b, c):
-        x = torch.cat(
-            (
-                a.reshape(a.shape[0], -1),
-                b.reshape(b.shape[0], -1),
-                c.reshape(b.shape[0], -1),
-            ),
-            1,
-        )
-        return self.func(x)
-
-
-def _parse_mlp_formula(formula):
-    in_shapes, _, out_shape = formula.partition("->")
-
-    in_shapes = eval("(" + in_shapes + ",)")
-    out_shape = eval(out_shape)
-
-    return in_shapes, out_shape
-
-
-def make_data_loader(dataset, mode="fit", **kwargs):
-    if mode == "fit":
-        default_kwargs = dict(shuffle=True, drop_last=True)
-
-    elif mode == "predict":
-        default_kwargs = dict(shuffle=False, drop_last=False)
-
-    else:
-        raise ValueError()
-
-    kwargs = {**default_kwargs, **kwargs}
-    return torch.utils.data.DataLoader(dataset, **kwargs)
 
 
 class NumpyDataset(torch.utils.data.Dataset):
