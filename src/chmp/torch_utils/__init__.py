@@ -25,6 +25,8 @@ from chmp.ds import (
     prod,
 )
 
+from ._net import make_net
+
 try:
     import pandas as pd
 
@@ -473,32 +475,18 @@ def _wrap_mlp(in_features, mlp):
 
 
 class _FlatCat1(torch.nn.Module):
-    def __init__(self, func):
-        super().__init__()
-        self.func = func
-
     def forward(self, a):
-        x = a.reshape(a.shape[0], -1)
-        return self.func(x)
+        return a.reshape(a.shape[0], -1)
 
 
 class _FlatCat2(torch.nn.Module):
-    def __init__(self, func):
-        super().__init__()
-        self.func = func
-
     def forward(self, a, b):
-        x = torch.cat((a.reshape(a.shape[0], -1), b.reshape(b.shape[0], -1)), 1)
-        return self.func(x)
+        return torch.cat((a.reshape(a.shape[0], -1), b.reshape(b.shape[0], -1)), 1)
 
 
 class _FlatCat3(torch.nn.Module):
-    def __init__(self, func):
-        super().__init__()
-        self.func = func
-
     def forward(self, a, b, c):
-        x = torch.cat(
+        return torch.cat(
             (
                 a.reshape(a.shape[0], -1),
                 b.reshape(b.shape[0], -1),
@@ -506,7 +494,6 @@ class _FlatCat3(torch.nn.Module):
             ),
             1,
         )
-        return self.func(x)
 
 
 def _parse_mlp_formula(formula):
