@@ -2,6 +2,8 @@ import codecs
 import contextlib
 import json
 
+from typing import Protocol
+
 import numpy as np
 
 
@@ -222,33 +224,42 @@ class FunctionalEnv:
     """
 
     def __init__(self):
+        self._impl = self.get_impl()
         self._state = None
 
+    def get_impl(self) -> "FunctionalEnvImpl":
+        raise NotImplementedError()
+
     def reset(self):
-        self._state = self.init()
-        obs = self.observe(self._state)
+        self._state = self._impl.init()
+        obs = self._impl.observe(self._state)
         return obs
 
     def step(self, action):
-        done, next_state = self.transition(self._state, action)
-        reward = self.reward(self._state, next_state, action)
-        obs = self.observe(next_state)
+        done, next_state = self._impl.transition(self._state, action)
+        reward = self._impl.reward(self._state, next_state, action)
+        obs = self._impl.observe(next_state)
 
         self._state = next_state
 
         return obs, reward, done, None
 
+
+class FunctionalEnvImpl(Protocol):
     def init(self):
-        raise NotImplementedError()
+        ...
 
     def observe(self, state):
-        raise NotImplementedError()
+        ...
 
     def reward(self, prev_state, state, action):
-        raise NotImplementedError()
+        ...
 
     def transition(self, state, action):
-        raise NotImplementedError()
+        ...
+
+    def sample_action(self, state):
+        ...
 
 
 def add_reward_to_go(
