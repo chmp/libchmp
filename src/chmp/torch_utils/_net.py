@@ -8,8 +8,7 @@ from chmp.ds import prod
 
 
 def make_net(*inputs):
-    """Define a neural network with given input shapes.
-    """
+    """Define a neural network with given input shapes."""
     return NetBuilder(
         None,
         None,
@@ -19,23 +18,35 @@ def make_net(*inputs):
 
 
 def register(func):
-    NetBuilder._net_transforms[func.__name__] = func
+    NetBuilder._transforms[func.__name__] = func
+    setattr(NetBuilder, func.__name__, func)
+    setattr(make_net, func.__name__, func)
+
+    doc = ["A fluid neural network builder", ""]
+    for func in NetBuilder._transforms.values():
+        if func.__doc__ is None:
+            func_doc = ""
+
+        else:
+            func_doc = func.__doc__.splitlines()[0].strip()
+
+        doc += [f"- {func.__name__}: {func_doc}"]
+
+    doc += [
+        "",
+        "Call help(make.{func}) for more details, e.g., help(make_net.linear).",
+    ]
+
+    make_net.__doc__ = "\n".join(doc)
+
     return func
 
 
 make_net.register = register
 
 
-class DynamicDoc:
-    def __get__(self, obj, objtype=None):
-        return "foo"
-
-
-make_net.__doc__ = DynamicDoc()
-
-
 class NetBuilder:
-    _net_transforms = {}
+    _transforms = {}
 
     def __init__(self, decorator, obj, in_shapes, out_shapes):
         self.decorator = decorator
@@ -47,8 +58,8 @@ class NetBuilder:
         self.in_size = _size(*in_shapes)
         self.out_size = _size(*out_shapes)
 
-    def __getattr__(self, key):
-        return ft.partial(self._net_transforms[key], self)
+    def __call__(self, *args, **kwargs):
+        raise RuntimeError("Cannot call unbuilt net, call .build() first")
 
     def _is_vector_output(self):
         return self.out_shapes == ((self.out_size,),)
@@ -59,12 +70,14 @@ class NetBuilder:
 
     def _assert_is_vector_output(self, ctx):
         if not self._is_vector_output():
-            raise RuntimeError(f"Cannot call {ctx} on non-vector output, call flatten() first")
-
+            raise RuntimeError(
+                f"Cannot call {ctx} on non-vector output, call flatten() first"
+            )
 
 
 @make_net.register
 def build(net):
+    """Build the network"""
     if net.obj is None:
         raise ValueError("Cannot build mlp without transforms")
 
@@ -80,7 +93,6 @@ def build(net):
     return res
 
 
-@make_net.register
 def chain(net, transform, out_shapes):
     if net.obj is None:
         obj = transform
@@ -114,11 +126,13 @@ def decorate(net, decorate, in_shapes):
 
 @make_net.register
 def pipe(net, func, *args, **kwargs):
+    """Call a function on the current builder"""
     return func(net, *args, **kwargs)
 
 
 @make_net.register
 def repeat(net, n, func, *args, **kwargs):
+    """Repeatedly call a function on the current builder"""
     for _ in range(n):
         net = func(net, *args, **kwargs)
 
@@ -127,6 +141,7 @@ def repeat(net, n, func, *args, **kwargs):
 
 @make_net.register
 def flatten(net):
+    """Append a layer to flatten the current output of the builder"""
     if net.out_shapes == ((net.out_size,),):
         return net
 
@@ -145,10 +160,12 @@ def flatten(net):
 
 @make_net.register
 def linear(net, out_features, *, bias=True):
+    """Append a linear layer"""
     out_size = _size(out_features)
 
     this = net if net._is_vector_output() else net.flatten()
-    this = this.chain(
+    this = chain(
+        this,
         torch.nn.Linear(net.out_size, out_size, bias=bias),
         out_shapes=((out_size,),),
     )
@@ -157,7 +174,8 @@ def linear(net, out_features, *, bias=True):
 
 
 @make_net.register
-def linears(net, *sizes, activation=None, bias=True):
+def linears(net, *sizes, activation="relu", bias=True):
+    """Append multiple linear layers with the given activation function"""
     for out_features in sizes:
         net = net.linear(out_features, bias=bias)
         if activation is not None:
@@ -168,30 +186,51 @@ def linears(net, *sizes, activation=None, bias=True):
 
 @make_net.register
 def relu(net):
+    """Append a ReLU activation layer"""
     net._assert_single_output("relu")
     return chain(net, torch.nn.ReLU(), out_shapes=net.out_shapes)
 
 
 @make_net.register
 def sigmoid(net):
+    """Append a sigmoid activation layer"""
     net._assert_single_output("sigmoid")
     return chain(net, torch.nn.Sigmoid(), out_shapes=net.out_shapes)
 
 
 @make_net.register
 def softplus(net):
+    """Append a softplus activation layer"""
     net._assert_single_output("softplus")
     return chain(net, torch.nn.Softplus(), out_shapes=net.out_shapes)
 
 
 @make_net.register
 def tanh(net):
+    """Append a tanh activation layer"""
     net._assert_single_output("tanh")
     return chain(net, torch.nn.Tanh(), out_shapes=net.out_shapes)
 
 
 @make_net.register
+def squareplus(net, alpha=1.0):
+    """Append a squareplus activation layer
+
+    Source: https://twitter.com/jon_barron/status/1387167648669048833
+    """
+    net._assert_single_output("squareplus")
+    return chain(net, SquarePlus(alpha), out_shapes=net.out_shapes)
+
+
+@make_net.register
+def call(net, func_name, *args, **kwargs):
+    """Call a builder function by name (e.g., an activation)."""
+    return getattr(net, func_name)(*args, **kwargs)
+
+
+@make_net.register
 def reshape(net, shape):
+    """Reshape the current output of the network (no batch dim should be passed)"""
     if not isinstance(shape, (tuple, list)):
         shape = (shape,)
 
@@ -201,7 +240,7 @@ def reshape(net, shape):
     if net.out_shapes == (shape,):
         return net
 
-    return net.chain(Reshape((-1, *shape)), out_shapes=(shape,))
+    return chain(net, Reshape((-1, *shape)), out_shapes=(shape,))
 
 
 def _shapes(shapes):
@@ -217,7 +256,6 @@ def _shape(shape):
 
 def _size(*shapes):
     return sum(prod(_shape(s)) for s in shapes)
-
 
 
 class _FlatCat1(torch.nn.Module):
@@ -259,3 +297,17 @@ class Reshape(torch.nn.Module):
 
     def forward(self, x):
         return x.reshape(self.shape)
+
+
+class SquarePlus(torch.nn.Module):
+    """Squareplus activation
+
+    Source: https://twitter.com/jon_barron/status/1387167648669048833
+    """
+
+    def __init__(self, alpha=1.0):
+        super().__init__()
+        self.alpha2 = alpha ** 2.0
+
+    def forward(self, x):
+        return 0.5 * (x + torch.sqrt(x ** 2.0 + self.alpha2))

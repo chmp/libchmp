@@ -10,7 +10,6 @@ from chmp.torch_utils import (
     n2t,
     t2t,
     n2n,
-    make_mlp,
     ESGradient,
     update_moving_average,
 )
@@ -111,54 +110,6 @@ def test_t2t_example():
 
     res = func(np.random.normal(size=()), np.random.normal(size=()))
     assert isinstance(res, torch.Tensor)
-
-
-def test_make_mlp():
-    make_mlp(5, 5)
-    make_mlp(5, 5, activation=torch.nn.ReLU)
-    make_mlp(5, 5, hidden=(10,), activation=torch.nn.ReLU)
-    make_mlp(5, 5, hidden=10, activation=torch.nn.Softplus)
-
-
-@pytest.mark.parametrize(
-    "shapes, inputs, expected",
-    [
-        (
-            (5, 4),
-            [(10, 5)],
-            (10, 4),
-        ),
-        (
-            ((3, 2), 4),
-            [(10, 3, 2)],
-            (10, 4),
-        ),
-        (
-            ((3,), (2,), 4),
-            [(10, 3), (10, 2)],
-            (10, 4),
-        ),
-        (
-            ((3,), (2,), ()),
-            [(10, 3), (10, 2)],
-            (10,),
-        ),
-        (
-            ((), (), ()),
-            [(10,), (10,)],
-            (10,),
-        ),
-        (
-            ((), ()),
-            [(10,)],
-            (10,),
-        ),
-    ],
-)
-def test_make_mlp_examples(shapes, inputs, expected):
-    nn = make_mlp(*shapes)
-    actual = nn(*(torch.zeros(shape) for shape in inputs)).shape
-    assert actual == expected
 
 
 def test_esgradient_example():
