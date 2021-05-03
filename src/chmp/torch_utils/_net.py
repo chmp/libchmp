@@ -35,6 +35,10 @@ def register(func):
     doc += [
         "",
         "Call help(make.{func}) for more details, e.g., help(make_net.linear).",
+        "",
+        "Example:",
+        "",
+        "    make_mlp(20).linear(32).relu().linear(1)",
     ]
 
     make_net.__doc__ = "\n".join(doc)
