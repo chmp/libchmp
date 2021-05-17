@@ -306,7 +306,7 @@ class cell:
             func()
 
 
-def colorize(items, cmap=None):
+def colorize(items, *, skip=0, cmap=None, **kwargs):
     """Given an iterable, yield ``(color, item)`` pairs.
 
     :param cmap:
@@ -322,20 +322,23 @@ def colorize(items, cmap=None):
 
             for c, (_, g) in colorize(df.groupby("g"), cmap="viridis"):
                 ...
+    :param skip:
+        the nubmer of items to skip in the color cycle (only used for cmap is None)
     """
+    items = list(items)
+
+    if not items:
+        return iter(())
+
     if cmap is None:
-        cycle = get_color_cycle()
-        return zip(it.cycle(cycle), items)
+        color_iter = get_color_cycle()
+        color_iter = it.islice(color_iter, skip, None)
 
     else:
-        items = list(items)
-
-        if not items:
-            return iter(())
-
         keys = [item[0] if isinstance(item, (tuple, list)) else item for item in items]
+        color_iter = colormap(keys, cmap=cmap, **kwargs)
 
-        return zip(colormap(keys, cmap=cmap), items)
+    return zip(color_iter, items)
 
 
 def get_color_cycle(n=None):
@@ -1458,7 +1461,7 @@ def find_categorical_columns(df):
     return [k for k, dtype in df.dtypes.items() if pd_types.is_categorical_dtype(dtype)]
 
 
-def colormap(x, cmap="coolwarm", center=True, vmin=None, vmax=None, norm=None):
+def colormap(x, cmap="coolwarm", center=False, vmin=None, vmax=None, norm=None):
     import numpy as np
     import matplotlib.cm as cm
     import matplotlib.colors as colors

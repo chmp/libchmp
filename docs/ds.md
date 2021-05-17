@@ -111,7 +111,7 @@ No-op context manager to allow indentation of code
 
 
 ### `chmp.ds.colorize`
-`chmp.ds.colorize(items, cmap=None)`
+`chmp.ds.colorize(items, *, skip=0, cmap=None, **kwargs)`
 
 Given an iterable, yield `(color, item)` pairs.
 
@@ -132,6 +132,8 @@ Given an iterable, yield `(color, item)` pairs.
   for c, (_, g) in colorize(df.groupby("g"), cmap="viridis"):
       ...
   ```
+* **skip** (*any*):
+  the nubmer of items to skip in the color cycle (only used for cmap is None)
 
 
 ### `chmp.ds.get_color_cycle`

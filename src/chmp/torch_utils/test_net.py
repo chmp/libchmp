@@ -2,6 +2,7 @@ import pytest
 import torch
 
 from chmp.torch_utils import make_net
+from chmp.torch_utils._net import ColFillna, ColNanIndicator, ColToDense
 
 
 def test_make_net_ff():
@@ -40,3 +41,17 @@ def test_activation_call(activation):
 
     res = net(torch.randn(10, 5))
     assert res.shape == (10, 2)
+
+
+@pytest.mark.parametrize(
+    "mod",
+    [
+        lambda: ColFillna({"a": 20.0}),
+        lambda: ColToDense(["a", "b", "c"]),
+        lambda: ColNanIndicator(["a", "b"]),
+    ],
+)
+def test_jittable(mod):
+    """Test that the column components can be jitted"""
+    mod = mod()
+    torch.jit.script(mod)

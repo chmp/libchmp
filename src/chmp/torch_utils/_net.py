@@ -1,6 +1,6 @@
 """Utilities to build networks with a fluent interface"""
 
-import functools as ft
+from typing import Dict, List
 
 import torch
 
@@ -315,3 +315,56 @@ class SquarePlus(torch.nn.Module):
 
     def forward(self, x):
         return 0.5 * (x + torch.sqrt(x ** 2.0 + self.alpha2))
+
+
+class ColFillna(torch.nn.Module):
+    fill_values: Dict[str, float]
+
+    def __init__(self, fill_values):
+        super().__init__()
+        self.fill_values = fill_values
+        self._cols = set(fill_values)
+
+    def forward(self, x: Dict[str, torch.Tensor]):
+        res = {}
+
+        for key in x:
+            if key in self.fill_values:
+                res[key] = torch.nan_to_num(x[key], self.fill_values[key])
+
+            else:
+                res[key] = x[key]
+
+        return res
+
+
+class ColToDense(torch.nn.Module):
+    columns: List[str]
+
+    def __init__(self, columns):
+        super().__init__()
+        self.columns = columns
+
+    def forward(self, x: Dict[str, torch.Tensor]):
+        res = []
+
+        for col in self.columns:
+            res.append(x[col])
+
+        return torch.cat(res, 1)
+
+
+class ColNanIndicator(torch.nn.Module):
+    columns: Dict[str, str]
+
+    def __init__(self, columns, suffix="_nan"):
+        super().__init__()
+        self.columns = {col: f"{col}{suffix}" for col in columns}
+
+    def forward(self, x: Dict[str, torch.Tensor]):
+        res = {}
+
+        for key in x:
+            res[key] = x[key]
+            if key in self.columns:
+                res[self.columns[key]] = 1.0 - torch.isfinite(x[key]).float()
